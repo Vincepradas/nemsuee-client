@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "https://nemsuee-a3cxc3fgejhxapfb.southeastasia-01.azurewebsites.net/api";
 
 export function useApi(token: string | null) {
   const headers = useMemo(
