@@ -2,6 +2,7 @@ export type Role = "STUDENT" | "INSTRUCTOR";
 export type ViewKey =
   | "dashboard"
   | "courses"
+  | "course_search"
   | "scores"
   | "storage"
   | "profile";

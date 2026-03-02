@@ -18,6 +18,7 @@ export function CoursesHub(props: {
   setSelectedCourseId: (id: number) => void;
   refreshCore: () => Promise<void>;
   setMessage: (m: string) => void;
+  studentViewMode?: "all" | "my" | "search";
 }) {
   const {
     user,
@@ -29,6 +30,7 @@ export function CoursesHub(props: {
     setSelectedCourseId,
     refreshCore,
     setMessage,
+    studentViewMode = "all",
   } = props;
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalog, setCatalog] = useState<CatalogCourse[]>([]);
@@ -56,7 +58,7 @@ export function CoursesHub(props: {
   const [showManualEnroll, setShowManualEnroll] = useState<Record<number, boolean>>({});
   const [showAddLesson, setShowAddLesson] = useState<Record<number, boolean>>({});
   const [lessonTargetSection, setLessonTargetSection] = useState<Record<number, number>>({});
-  const [studentCourseView, setStudentCourseView] = useState<"grid" | "list">("grid");
+  const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newCourseDescription, setNewCourseDescription] = useState("");
   const [showCreateCourse, setShowCreateCourse] = useState(false);
@@ -200,7 +202,7 @@ export function CoursesHub(props: {
         method: "POST",
         headers,
         body: JSON.stringify(
-          lessonInput[sectionId] || { title: "", content: "", fileUrl: "" },
+          lessonInput[courseId] || { title: "", content: "", fileUrl: "" },
         ),
       });
       await refreshCore();
@@ -231,11 +233,34 @@ export function CoursesHub(props: {
     }
   }
 
+  async function regenerateEnrollmentKey(courseId: number) {
+    try {
+      const data = await api(`/courses/${courseId}/enrollment-key/regenerate`, {
+        method: "PATCH",
+        headers,
+      });
+      await refreshCore();
+      setMessage(`New enrollment key generated: ${data.enrollmentKey}`);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
   useEffect(() => {
     if (!selectedCourse) return;
     loadRoster(selectedCourse.id);
     if (user.role === "INSTRUCTOR") loadPending(selectedCourse.id);
   }, [selectedCourse?.id, user.role]);
+
+  useEffect(() => {
+    if (!selectedCourse) return;
+    setCollapsedSections(
+      selectedCourse.sections.reduce(
+        (acc, section) => ({ ...acc, [section.id]: true }),
+        {} as Record<number, boolean>,
+      ),
+    );
+  }, [selectedCourse?.id]);
 
   return (
     <section className="space-y-4">
@@ -276,48 +301,51 @@ export function CoursesHub(props: {
         </div>
       )}
 
-      {user.role === "STUDENT" ? (
+      {user.role === "STUDENT" && studentViewMode !== "search" ? (
         <div className="rounded-md border border-slate-200 p-3">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="font-semibold">My Courses</h3>
-            <div className="flex gap-2">
-              <button onClick={() => setStudentCourseView("grid")} className={`rounded px-3 py-1 text-xs ${studentCourseView === "grid" ? "bg-blue-700 text-white" : "bg-slate-100"}`}>Grid</button>
-              <button onClick={() => setStudentCourseView("list")} className={`rounded px-3 py-1 text-xs ${studentCourseView === "list" ? "bg-blue-700 text-white" : "bg-slate-100"}`}>List</button>
-            </div>
           </div>
-
-          <div className={studentCourseView === "grid" ? "grid gap-3 md:grid-cols-2" : "space-y-2"}>
-            {courses.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCourseId(c.id)}
-                className={`rounded-md border p-3 text-left transition ${selectedCourse?.id === c.id ? "border-blue-700 bg-blue-700 text-white" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50"}`}
-              >
-                <p className="font-semibold">{c.title}</p>
-                <p className={`text-xs ${selectedCourse?.id === c.id ? "text-slate-200" : "text-slate-500"}`}>{c.sections.length} section(s)</p>
-                {c.instructor?.fullName && <p className={`text-xs ${selectedCourse?.id === c.id ? "text-slate-200" : "text-slate-500"}`}>Instructor: {c.instructor.fullName}</p>}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {courses.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedCourseId(c.id)}
-              className={`rounded-md border p-3 text-left transition ${selectedCourse?.id === c.id ? "border-blue-700 bg-blue-700 text-white" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50"}`}
+          <div className="relative">
+            <select
+              value={selectedCourse?.id || ""}
+              onChange={(e) => setSelectedCourseId(Number(e.target.value))}
+              className="w-full appearance-none rounded border border-slate-300 p-2 pr-9 text-sm"
             >
-              <p className="font-semibold">{c.title}</p>
-              <p className={`text-xs ${selectedCourse?.id === c.id ? "text-slate-200" : "text-slate-500"}`}>
-                {c.sections.length} section(s)
-              </p>
-            </button>
-          ))}
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.sections.length} block{c.sections.length !== 1 ? "s" : ""})
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
+              ▾
+            </span>
+          </div>
         </div>
-      )}
+      ) : user.role === "INSTRUCTOR" ? (
+        <div className="rounded-md border border-slate-200 p-3">
+          <h3 className="mb-3 font-semibold">Courses</h3>
+          <div className="relative">
+            <select
+              value={selectedCourse?.id || ""}
+              onChange={(e) => setSelectedCourseId(Number(e.target.value))}
+              className="w-full appearance-none rounded border border-slate-300 p-2 pr-9 text-sm"
+            >
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.sections.length} block{c.sections.length !== 1 ? "s" : ""})
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">
+              ▾
+            </span>
+          </div>
+        </div>
+      ) : null}
 
-      {user.role === "STUDENT" && (
+      {user.role === "STUDENT" && studentViewMode !== "my" && (
         <div className="space-y-3">
           <div className="rounded-md border border-slate-200 p-3">
             <h3 className="mb-2 font-semibold">Discover Courses</h3>
@@ -426,7 +454,7 @@ export function CoursesHub(props: {
         </div>
       )}
 
-      {selectedCourse && (
+      {selectedCourse && (user.role === "INSTRUCTOR" || studentViewMode !== "search") && (
         <article className="rounded-md border border-slate-200 p-3">
           <div className="mb-2 flex items-start justify-between gap-3">
             <div>
@@ -435,9 +463,17 @@ export function CoursesHub(props: {
                 {selectedCourse.description}
               </p>
               {user.role === "INSTRUCTOR" && (
-                <p className="text-sm text-blue-700">
-                  Enrollment Key: {selectedCourse.enrollmentKey}
-                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-sm text-blue-700">
+                    Enrollment Key: {selectedCourse.enrollmentKey}
+                  </p>
+                  <button
+                    onClick={() => regenerateEnrollmentKey(selectedCourse.id)}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                  >
+                    Generate New Key
+                  </button>
+                </div>
               )}
             </div>
             <button
@@ -724,31 +760,29 @@ export function CoursesHub(props: {
           )}
 
           {activeCourseTab === "content" && <div className="space-y-3">
-            <div className="rounded border border-slate-200 bg-slate-50 p-2 text-sm">
-              <p className="mb-2 font-semibold">Quick Navigation</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedCourse.sections.map((s) => (
-                  <a
-                    key={s.id}
-                    href={`#section-${s.id}`}
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:border-blue-300"
-                  >
-                    {s.name}
-                  </a>
-                ))}
-              </div>
-            </div>
             {selectedCourse.sections.map((s) => (
               <section
                 key={s.id}
                 id={`section-${s.id}`}
                 className="rounded border border-slate-200 bg-white"
               >
-                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedSections((prev) => ({
+                      ...prev,
+                      [s.id]: !prev[s.id],
+                    }))
+                  }
+                  className="flex w-full items-center justify-between border-b border-slate-200 px-3 py-2 text-left"
+                >
                   <p className="font-semibold">{s.name}</p>
-                </div>
-                
-                <div className="space-y-4 p-3">
+                  <span className="text-sm text-slate-500" aria-hidden="true">
+                    {collapsedSections[s.id] ? "▸" : "▾"}
+                  </span>
+                </button>
+
+                {!collapsedSections[s.id] && <div className="space-y-4 p-3">
                   {(["Lecture", "Laboratory", "Class Activities", "Quizzes", "Examinations", "Resources"] as const).map((group) => {
                     const items = s.lessons.filter((l) => groupForLesson(l) === group);
                     if (!items.length) return null;
@@ -842,7 +876,7 @@ export function CoursesHub(props: {
                     );
                   })}
                   {!s.lessons.length && <p className="text-sm text-slate-500">No lessons yet.</p>}
-                </div>
+                </div>}
               </section>
             ))}
           </div>}

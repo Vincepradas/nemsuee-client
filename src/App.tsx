@@ -155,52 +155,60 @@ export default function App() {
         </div>
 
         <main className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between text-xs text-slate-500">
-            <p>
-              {isSyncing
-                ? "Syncing data..."
-                : `Last sync: ${lastSync ? lastSync.toLocaleTimeString() : "not yet"}`}
-            </p>
-            <button
-              onClick={() =>
-                refreshCore().catch((e) => setMessage((e as Error).message))
-              }
-              className="rounded border border-slate-300 px-2 py-1"
-            >
-              Refresh Now
-            </button>
-          </div>
+          {view === "dashboard" && (
+            <div className="mb-3 flex items-center justify-between text-xs text-slate-500">
+              <p>
+                {isSyncing
+                  ? "Syncing data..."
+                  : `Last sync: ${lastSync ? lastSync.toLocaleTimeString() : "not yet"}`}
+              </p>
+              <button
+                onClick={() =>
+                  refreshCore().catch((e) => setMessage((e as Error).message))
+                }
+                className="rounded border border-slate-300 px-2 py-1"
+              >
+                Refresh Now
+              </button>
+            </div>
+          )}
           {message && (
             <p className="mb-3 rounded border border-slate-300 bg-slate-100 p-2 text-sm">
               {message}
             </p>
           )}
 
-          <section className="mb-4 grid gap-3 md:grid-cols-4">
-            <Metric label="Courses" value={String(courses.length)} />
-            <Metric
-              label="Sections"
-              value={String(courses.reduce((a, c) => a + c.sections.length, 0))}
-            />
-            <Metric
-              label="Lessons"
-              value={String(
-                courses.reduce(
-                  (a, c) =>
-                    a + c.sections.reduce((b, s) => b + s.lessons.length, 0),
-                  0,
-                ),
-              )}
-            />
-            <Metric
-              label="Average"
-              value={`${attempts.length ? Math.round(attempts.reduce((a, x) => a + (x.score / Math.max(1, x.total)) * 100, 0) / attempts.length) : 0}%`}
-            />
-          </section>
+          {view === "dashboard" && (
+            <section className="mb-4 grid gap-3 md:grid-cols-4">
+              <Metric label="Courses" value={String(courses.length)} />
+              <Metric
+                label="Sections"
+                value={String(courses.reduce((a, c) => a + c.sections.length, 0))}
+              />
+              <Metric
+                label="Lessons"
+                value={String(
+                  courses.reduce(
+                    (a, c) =>
+                      a + c.sections.reduce((b, s) => b + s.lessons.length, 0),
+                    0,
+                  ),
+                )}
+              />
+              <Metric
+                label="Average"
+                value={`${attempts.length ? Math.round(attempts.reduce((a, x) => a + (x.score / Math.max(1, x.total)) * 100, 0) / attempts.length) : 0}%`}
+              />
+            </section>
+          )}
 
           {view === "dashboard" && (
             <DashboardInfo
+              user={user}
               role={user.role}
+              courses={courses}
+              attempts={attempts}
+              lastSync={lastSync}
               onNavigate={setView}
               onRefresh={() =>
                 refreshCore().catch((e) => setMessage((e as Error).message))
@@ -218,6 +226,21 @@ export default function App() {
               setSelectedCourseId={setSelectedCourseId}
               refreshCore={refreshCore}
               setMessage={setMessage}
+              studentViewMode={user.role === "STUDENT" ? "my" : "all"}
+            />
+          )}
+          {view === "course_search" && user.role === "STUDENT" && (
+            <CoursesHub
+              user={user}
+              api={api}
+              headers={headers}
+              courses={courses}
+              attempts={attempts}
+              selectedCourse={selectedCourse}
+              setSelectedCourseId={setSelectedCourseId}
+              refreshCore={refreshCore}
+              setMessage={setMessage}
+              studentViewMode="search"
             />
           )}
           {view === "scores" && <Scores attempts={attempts} />}
