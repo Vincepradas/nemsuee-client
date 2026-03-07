@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-const configuredApiBase = (import.meta.env.VITE_API_URL || "").trim();
+const configuredApiBase = (import.meta.env.VITE_API_URL || "nemsuee-a3cxc3fgejhxapfb.southeastasia-01.azurewebsites.net/api").trim();
 
 const API_BASE =
   configuredApiBase || (import.meta.env.DEV ? "nemsuee-a3cxc3fgejhxapfb.southeastasia-01.azurewebsites.net/api" : "/api");
