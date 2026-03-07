@@ -301,15 +301,6 @@ export function AuthScreen({
 
             {mode === "register" && (
               <>
-                {role === "STUDENT" && (
-                  <input
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                    required
-                    placeholder="Student ID"
-                    className={`${inputClass} mb-2`}
-                  />
-                )}
                 <div className="relative mb-2">
                   <input
                     value={confirmPassword}
@@ -331,13 +322,26 @@ export function AuthScreen({
                 </div>
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as "STUDENT" | "INSTRUCTOR")}
+                  onChange={(e) => {
+                    const nextRole = e.target.value as "STUDENT" | "INSTRUCTOR";
+                    setRole(nextRole);
+                    if (nextRole !== "STUDENT") setStudentId("");
+                  }}
                   name="role"
                   className={`${inputClass} mb-2`}
                 >
                   <option value="STUDENT">Student</option>
                   <option value="INSTRUCTOR">Instructor (Requires admin approval)</option>
                 </select>
+                {role === "STUDENT" && (
+                  <input
+                    value={studentId}
+                    onChange={(e) => setStudentId(e.target.value)}
+                    required
+                    placeholder="Student ID"
+                    className={`${inputClass} mb-2`}
+                  />
+                )}
                 <div className={`mb-3 grid grid-cols-2 gap-1 text-xs ${isDark ? "text-slate-300" : ""}`}>
                   <p className={passwordChecks.length ? "text-emerald-400" : "text-slate-400"}>8+ chars</p>
                   <p className={passwordChecks.upper ? "text-emerald-400" : "text-slate-400"}>Uppercase</p>
