@@ -66,9 +66,11 @@ export function Sidebar({
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     aria-hidden="true"
                   >
-                    <path d="M7 6l6 4-6 4" />
+                    <path d="M8 5l5 5-5 5" />
                   </svg>
                 </button>
                 {view === "archives" && (
@@ -112,9 +114,11 @@ export function Sidebar({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <path d="M7 6l6 4-6 4" />
+                  <path d="M8 5l5 5-5 5" />
                 </svg>
               </button>
               {coursesOpen && (

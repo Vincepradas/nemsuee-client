@@ -17,7 +17,18 @@ export type User = {
   role: Role;
   studentId?: string | null;
 };
-export type Quiz = { id: number; questions: { id: number; prompt: string }[] };
+export type Quiz = {
+  id: number;
+  quizType?: "MULTIPLE_CHOICE" | "TRUE_FALSE";
+  questions: {
+    id: number;
+    prompt: string;
+    optionA?: string;
+    optionB?: string;
+    optionC?: string;
+    optionD?: string;
+  }[];
+};
 export type Lesson = {
   id: number;
   title: string;
@@ -45,6 +56,38 @@ export type Attempt = {
   total: number;
   quiz: { lesson: { title: string; course: { id: number; title: string } } };
   student?: { fullName: string };
+};
+
+export type CourseTask = {
+  id: number;
+  courseId: number;
+  sectionId: number;
+  sectionName: string;
+  kind: "ASSIGNMENT" | "ACTIVITY";
+  mode: "MANUAL" | "FILE";
+  title: string;
+  description?: string | null;
+  fileUrl?: string | null;
+  dueAt?: string | null;
+  createdAt: string;
+  mySubmission?: TaskSubmission | null;
+  submissions?: TaskSubmission[];
+};
+
+export type TaskSubmission = {
+  id: number;
+  taskId: number;
+  studentId: number;
+  studentName?: string;
+  studentEmail?: string;
+  answerText?: string | null;
+  fileUrl?: string | null;
+  grade?: number | null;
+  feedback?: string | null;
+  gradedBy?: number | null;
+  gradedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CatalogCourse = {

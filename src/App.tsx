@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "./hooks/useApi";
+import { useActionIconizer } from "./hooks/useActionIconizer";
+import { useNotifications } from "./hooks/useNotifications";
 import type {
   Attempt,
   Course,
@@ -41,10 +43,22 @@ export default function App() {
     () => window.innerWidth >= 1024,
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [forcedCourseTab, setForcedCourseTab] = useState<
+    "content" | "quizzes" | "assignments" | "activities" | "scores" | null
+  >(null);
   const { api, headers } = useApi();
   const location = useLocation();
   const navigate = useNavigate();
   const selectedCourseIdRef = useRef<number | null>(selectedCourseId);
+  const {
+    notifications,
+    notificationsOpen,
+    setNotificationsOpen,
+    loadNotifications,
+    markAsRead,
+  } = useNotifications({ api, headers, enabled: Boolean(user) });
+
+  useActionIconizer();
 
   useEffect(() => {
     const appTheme = user ? "light" : theme;
@@ -68,6 +82,7 @@ export default function App() {
   function openCourse(courseId: number) {
     setView("courses");
     setSelectedCourseId(courseId);
+    setForcedCourseTab(null);
     navigate(`/courses/${courseId}`);
   }
 
@@ -90,10 +105,16 @@ export default function App() {
         user.role === "INSTRUCTOR"
           ? await api("/courses/teaching-blocks", { headers })
           : [];
+      const activeCourseIds = new Set(
+        (c as Course[]).map((course) => course.id),
+      );
+      const visibleBlocks = (blocks as TeachingBlock[]).filter((block) =>
+        activeCourseIds.has(block.courseId),
+      );
       setCourses(c);
       setAttempts(a);
       setArchivedCourses(archived);
-      setTeachingBlocks(blocks);
+      setTeachingBlocks(visibleBlocks);
       const currentSelected = selectedCourseIdRef.current;
       if (!currentSelected && c[0]) {
         setSelectedCourseId(c[0].id);
@@ -107,6 +128,7 @@ export default function App() {
         }
       }
       setLastSync(new Date());
+      await loadNotifications();
     } finally {
       setIsSyncing(false);
     }
@@ -131,8 +153,6 @@ export default function App() {
       await refreshCore().catch((e) => setMessage((e as Error).message));
     })();
   }, [user?.role]);
-
-  // Auto background sync disabled by design to minimize server requests and hosting costs.
 
   useEffect(() => {
     const path = location.pathname;
@@ -217,8 +237,12 @@ export default function App() {
 
           <div className="relative flex items-center gap-2">
             <button
-              className="rounded p-2 text-slate-700 hover:bg-slate-100"
+              className="relative rounded p-2 text-slate-700 hover:bg-slate-100"
               aria-label="Notifications"
+              onClick={() => {
+                setNotificationsOpen((v) => !v);
+                loadNotifications();
+              }}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -230,7 +254,57 @@ export default function App() {
                 <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V10a6 6 0 1 0-12 0v4.2a2 2 0 0 1-.6 1.4L4 17h5" />
                 <path d="M10 17a2 2 0 0 0 4 0" />
               </svg>
+              {!!notifications.filter((n) => !Boolean(n.isRead)).length && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500" />
+              )}
             </button>
+            {notificationsOpen && (
+              <div className="absolute right-12 top-12 z-50 w-80 rounded-md border border-slate-200 bg-white p-2 shadow-md">
+                <p className="px-2 pb-1 text-xs font-semibold text-slate-600">
+                  Notifications
+                </p>
+                <div className="max-h-80 space-y-1 overflow-auto">
+                  {notifications.length ? (
+                    notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        data-keep-action-text="true"
+                        onClick={async () => {
+                          if (!Boolean(notification.isRead)) {
+                            await markAsRead(notification.id);
+                          }
+                          if (notification.courseId) {
+                            setView("courses");
+                            setSelectedCourseId(Number(notification.courseId));
+                            setForcedCourseTab("content");
+                            navigate(`/courses/${notification.courseId}`);
+                          }
+                          setNotificationsOpen(false);
+                        }}
+                        className={`w-full rounded px-2 py-2 text-left hover:bg-slate-50 ${
+                          Boolean(notification.isRead)
+                            ? "bg-white"
+                            : "bg-blue-50/40"
+                        }`}
+                      >
+                        <p className="line-clamp-2 text-xs text-slate-800">
+                          {notification.message}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          {notification.createdAt
+                            ? new Date(notification.createdAt).toLocaleString()
+                            : ""}
+                        </p>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-2 py-3 text-xs text-slate-500">
+                      No notifications yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             <button
               className="rounded p-2 text-slate-700 hover:bg-slate-100"
               aria-label="Open profile menu"
@@ -278,10 +352,13 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    api("/auth/logout", { method: "POST", headers }).catch(() => null);
+                    api("/auth/logout", { method: "POST", headers }).catch(
+                      () => null,
+                    );
                     localStorage.removeItem("user");
                     setUser(null);
                   }}
+                  data-keep-action-text="true"
                   className="w-full rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                 >
                   Logout
@@ -386,7 +463,7 @@ export default function App() {
             </p>
           )}
 
-          {view === "dashboard" && (
+          {view === "dashboard" && user.role !== "INSTRUCTOR" && (
             <section className="mb-4 grid gap-3 md:grid-cols-4">
               <Metric label="Courses" value={String(courses.length)} />
               <Metric
@@ -438,6 +515,7 @@ export default function App() {
               refreshCore={refreshCore}
               setMessage={setMessage}
               studentViewMode={user.role === "STUDENT" ? "my" : "all"}
+              forcedCourseTab={forcedCourseTab}
             />
           )}
           {view === "course_search" && user.role === "STUDENT" && (
@@ -451,6 +529,7 @@ export default function App() {
               refreshCore={refreshCore}
               setMessage={setMessage}
               studentViewMode="search"
+              forcedCourseTab={forcedCourseTab}
             />
           )}
           {view === "scores" && <Scores attempts={attempts} />}

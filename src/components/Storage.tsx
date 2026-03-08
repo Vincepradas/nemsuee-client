@@ -208,7 +208,10 @@ export function Storage({
           />
             </>
           )}
-          <button className="rounded bg-slate-900 px-3 py-2 text-white">
+          <button
+            data-keep-action-text="true"
+            className="rounded bg-slate-900 px-3 py-2 text-white"
+          >
             {uploadMode === "file" ? "Upload File" : "Upload Note"}
           </button>
         </form>

@@ -27,3 +27,45 @@ body {
   transition: background-color 180ms ease, color 180ms ease;
 }
 
+button:not(:disabled),
+a[href],
+select:not(:disabled),
+input:not(:disabled):not([type="text"]):not([type="email"]):not([type="password"]):not([type="search"]):not([type="number"]),
+[role="button"],
+[onclick] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
+button[aria-label*="refresh" i],
+button[title*="refresh" i],
+button[aria-label*="info" i],
+button[title*="info" i] {
+  border-color: transparent !important;
+}
+
+button[data-action-iconized="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem !important;
+  height: 2rem !important;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.35rem !important;
+  line-height: 1;
+}
+
+button[data-action-iconized="true"] svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+

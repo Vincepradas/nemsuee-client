@@ -29,6 +29,13 @@ export function CoursesHub(props: {
   refreshCore: () => Promise<void>;
   setMessage: (m: string) => void;
   studentViewMode?: "all" | "my" | "search";
+  forcedCourseTab?:
+    | "content"
+    | "quizzes"
+    | "assignments"
+    | "activities"
+    | "scores"
+    | null;
 }) {
   const {
     user,
@@ -40,6 +47,7 @@ export function CoursesHub(props: {
     refreshCore,
     setMessage,
     studentViewMode = "all",
+    forcedCourseTab = null,
   } = props;
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalog, setCatalog] = useState<CatalogCourse[]>([]);
@@ -80,8 +88,12 @@ export function CoursesHub(props: {
     Record<number, number>
   >({});
   const [activeCourseTab, setActiveCourseTab] = useState<
-    "content" | "quizzes" | "scores"
+    "content" | "quizzes" | "assignments" | "activities" | "scores"
   >("content");
+
+  useEffect(() => {
+    if (forcedCourseTab) setActiveCourseTab(forcedCourseTab);
+  }, [forcedCourseTab]);
 
   const [lessonInput, setLessonInput] = useState<
     Record<number, { title: string; content: string; fileUrl: string }>
@@ -364,12 +376,16 @@ export function CoursesHub(props: {
     }
   }
 
-  async function updateQuiz(quizId: number, questions: any[]) {
+  async function updateQuiz(
+    quizId: number,
+    questions: any[],
+    quizType?: "MULTIPLE_CHOICE" | "TRUE_FALSE",
+  ) {
     try {
       await api(`/quizzes/${quizId}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ questions }),
+        body: JSON.stringify({ questions, quizType }),
       });
       await refreshCore();
       setMessage("Quiz updated.");
@@ -452,6 +468,18 @@ export function CoursesHub(props: {
     if (!selectedCourse) return;
     loadRoster(selectedCourse.id);
     if (user.role === "INSTRUCTOR") loadPending(selectedCourse.id);
+  }, [selectedCourse?.id, user.role]);
+
+  useEffect(() => {
+    if (!selectedCourse) return;
+    const timer = window.setInterval(() => {
+      refreshCore().catch(() => null);
+      loadRoster(selectedCourse.id).catch(() => null);
+      if (user.role === "INSTRUCTOR") {
+        loadPending(selectedCourse.id).catch(() => null);
+      }
+    }, 10000);
+    return () => window.clearInterval(timer);
   }, [selectedCourse?.id, user.role]);
 
   return (

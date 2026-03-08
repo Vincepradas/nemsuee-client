@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import type { Course, Lesson, User } from "../../../types/lms";
 
 type StudentLite = { id: number; fullName: string };
@@ -36,6 +37,25 @@ export function CourseInfoModal(props: CourseInfoModalProps) {
     deleteCourse,
     leaveCourse,
   } = props;
+  const [studentQuery, setStudentQuery] = useState("");
+  const [studentPage, setStudentPage] = useState(1);
+  const studentPageSize = 10;
+  const filteredStudents = useMemo(() => {
+    const q = studentQuery.trim().toLowerCase();
+    if (!q) return uniqueStudents;
+    return uniqueStudents.filter((student) =>
+      student.fullName.toLowerCase().includes(q),
+    );
+  }, [uniqueStudents, studentQuery]);
+  const studentTotalPages = Math.max(
+    1,
+    Math.ceil(filteredStudents.length / studentPageSize),
+  );
+  const safeStudentPage = Math.min(studentPage, studentTotalPages);
+  const pagedStudents = filteredStudents.slice(
+    (safeStudentPage - 1) * studentPageSize,
+    safeStudentPage * studentPageSize,
+  );
   if (!open) return null;
 
   return (
@@ -65,11 +85,55 @@ export function CourseInfoModal(props: CourseInfoModalProps) {
           <div>
             <p className="font-semibold">Enrolled Students:</p>
             {uniqueStudents.length ? (
-              <ul className="mt-1 max-h-44 list-disc overflow-auto pl-5 text-sm">
-                {uniqueStudents.map((student) => (
-                  <li key={student.id}>{student.fullName}</li>
-                ))}
-              </ul>
+              <>
+                <input
+                  value={studentQuery}
+                  onChange={(e) => {
+                    setStudentQuery(e.target.value);
+                    setStudentPage(1);
+                  }}
+                  className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Search enrolled students"
+                />
+                <ul className="mt-2 max-h-44 list-disc overflow-auto pl-5 text-sm">
+                  {pagedStudents.map((student) => (
+                    <li key={student.id}>{student.fullName}</li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                  <p>
+                    Showing{" "}
+                    {filteredStudents.length
+                      ? (safeStudentPage - 1) * studentPageSize + 1
+                      : 0}
+                    -{Math.min(safeStudentPage * studentPageSize, filteredStudents.length)} of{" "}
+                    {filteredStudents.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() =>
+                        setStudentPage((p) => Math.max(1, p - 1))
+                      }
+                      disabled={safeStudentPage <= 1}
+                      className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
+                    >
+                      Prev
+                    </button>
+                    <span>
+                      {safeStudentPage}/{studentTotalPages}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setStudentPage((p) => Math.min(studentTotalPages, p + 1))
+                      }
+                      disabled={safeStudentPage >= studentTotalPages}
+                      className="rounded border border-slate-300 px-2 py-1 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : (
               <p className="text-slate-500">No enrolled students to show.</p>
             )}
@@ -754,6 +818,24 @@ export function LessonComposerModal(props: LessonComposerModalProps) {
             Close
           </button>
         </div>
+        {selectedCourse.sections.length >= 2 && (
+          <>
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Select Block
+            </label>
+            <select
+              value={composerSection.id}
+              onChange={(e) => setLessonComposerSectionId(Number(e.target.value))}
+              className="mb-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              {selectedCourse.sections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <input
           value={lessonInput[selectedCourse.id]?.title || ""}
           onChange={(e) =>
@@ -829,6 +911,7 @@ export function LessonComposerModal(props: LessonComposerModalProps) {
           <button
             onClick={saveResourceToLesson}
             disabled={isUploadingResource}
+            data-keep-action-text="true"
             className="rounded-md bg-blue-700 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isUploadingResource ? "Uploading..." : "Save Resource"}

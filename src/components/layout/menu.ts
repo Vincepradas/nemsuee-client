@@ -20,8 +20,9 @@ export function menu(role: Role): { key: ViewKey; label: string }[] {
 
   return [
     { key: "dashboard", label: "Dashboard" },
-    { key: "courses", label: "My Teaching Blocks" },
-    { key: "archives", label: "Archives" },
+    { key: "courses", label: "My Blocks" },
+    { key: "scores", label: "Gradebook" },
     { key: "storage", label: "Files" },
+    { key: "archives", label: "Archives" },
   ];
 }
