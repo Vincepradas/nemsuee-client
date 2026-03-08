@@ -6,6 +6,7 @@ export type ViewKey =
   | "archives"
   | "course_search"
   | "scores"
+  | "grade_computation"
   | "storage"
   | "profile";
 export type EnrollmentStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -48,6 +49,13 @@ export type Course = {
   sections: Section[];
   instructor?: { fullName: string };
   instructors?: { id: number; fullName: string; email?: string }[];
+  term?: {
+    id: number;
+    name: string;
+    academicYear: string;
+    isActive?: number;
+    isArchived?: number;
+  } | null;
 };
 
 export type Attempt = {
@@ -68,6 +76,7 @@ export type CourseTask = {
   title: string;
   description?: string | null;
   fileUrl?: string | null;
+  allowStudentResubmit?: number | boolean;
   dueAt?: string | null;
   createdAt: string;
   mySubmission?: TaskSubmission | null;

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Course, Lesson, User } from "../../../shared/types/lms";
+import { parseResourceScope, withResourceScope } from "../utils/resourceScope";
 
 type StudentLite = { id: number; fullName: string };
 
@@ -745,11 +746,19 @@ export function EditLessonModal(props: EditLessonModalProps) {
         <div className="flex gap-2">
           <button
             onClick={async () => {
+              const existingScope = parseResourceScope(
+                editingLesson.lesson.title || "",
+              );
               await updateLesson(
                 selectedCourse.id,
                 editingLesson.sectionId,
                 editingLesson.lesson.id,
-                editLessonInput,
+                {
+                  ...editLessonInput,
+                  title: existingScope
+                    ? withResourceScope(editLessonInput.title, existingScope)
+                    : editLessonInput.title,
+                },
               );
               setEditingLesson(null);
             }}

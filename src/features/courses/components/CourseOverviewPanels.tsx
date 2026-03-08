@@ -166,7 +166,7 @@ type InstructorOverviewPanelsProps = {
   selectedCourse: Course;
   filteredRosterCount: number;
   setActiveCourseTab: (
-    tab: "content" | "quizzes" | "assignments" | "activities" | "scores",
+    tab: "content" | "quizzes" | "assignments" | "activities",
   ) => void;
   setLessonComposerSectionId: (id: number | null) => void;
   setShowEnrollmentManager: (open: boolean) => void;
@@ -363,14 +363,9 @@ export function PendingRequestsPanel({
 }
 
 type CourseTabsProps = {
-  activeCourseTab:
-    | "content"
-    | "quizzes"
-    | "assignments"
-    | "activities"
-    | "scores";
+  activeCourseTab: "content" | "quizzes" | "assignments" | "activities";
   setActiveCourseTab: (
-    tab: "content" | "quizzes" | "assignments" | "activities" | "scores",
+    tab: "content" | "quizzes" | "assignments" | "activities",
   ) => void;
 };
 
@@ -393,12 +388,6 @@ export function CourseTabs({
         Quizzes
       </button>
       <button
-        onClick={() => setActiveCourseTab("scores")}
-        className={`rounded-md px-3 py-2 text-sm font-medium ${activeCourseTab === "scores" ? "bg-blue-700 text-white shadow-sm" : "bg-transparent text-slate-700 hover:bg-white"}`}
-      >
-        Scores
-      </button>
-      <button
         onClick={() => setActiveCourseTab("assignments")}
         className={`rounded-md px-3 py-2 text-sm font-medium ${activeCourseTab === "assignments" ? "bg-blue-700 text-white shadow-sm" : "bg-transparent text-slate-700 hover:bg-white"}`}
       >
@@ -413,4 +402,3 @@ export function CourseTabs({
     </div>
   );
 }
-

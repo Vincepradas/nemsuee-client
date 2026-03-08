@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Attempt, Course, User } from "../../../shared/types/lms";
 
 type QuizzesTabProps = {
@@ -15,9 +16,6 @@ type QuizzesTabProps = {
     quizType?: "MULTIPLE_CHOICE" | "TRUE_FALSE",
   ) => Promise<void>;
   deleteQuiz: (quizId: number) => Promise<void>;
-  setActiveCourseTab: (
-    tab: "content" | "quizzes" | "assignments" | "activities" | "scores",
-  ) => void;
 };
 
 type QuizType = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "IDENTIFICATION";
@@ -38,8 +36,8 @@ export function QuizzesTab({
   headers,
   refreshCore,
   setMessage,
-  setActiveCourseTab,
 }: QuizzesTabProps) {
+  const navigate = useNavigate();
   const [courseQuizzes, setCourseQuizzes] = useState<any[]>([]);
   const [createLessonId, setCreateLessonId] = useState<number | null>(null);
   const [quizMode, setQuizMode] = useState<"MANUAL" | "URL">("MANUAL");
@@ -65,6 +63,21 @@ export function QuizzesTab({
   const [takeExpiresAt, setTakeExpiresAt] = useState<number | null>(null);
   const [submittingTakeQuiz, setSubmittingTakeQuiz] = useState(false);
   const [settingsQuiz, setSettingsQuiz] = useState<any | null>(null);
+  const [studentResultOpen, setStudentResultOpen] = useState(false);
+  const [studentResultLoading, setStudentResultLoading] = useState(false);
+  const [studentResultData, setStudentResultData] = useState<any | null>(null);
+  const [showActivityHistory, setShowActivityHistory] = useState(false);
+  const recentStudentAttempts =
+    user.role === "STUDENT"
+      ? [...attempts]
+          .filter((a: any) => a?.quiz?.lesson?.course?.id === selectedCourse.id)
+          .sort(
+            (a: any, b: any) =>
+              new Date((b as any)?.createdAt || 0).getTime() -
+              new Date((a as any)?.createdAt || 0).getTime(),
+          )
+          .slice(0, 8)
+      : [];
 
   useEffect(() => {
     (async () => {
@@ -323,6 +336,66 @@ export function QuizzesTab({
 
   return (
     <div className="space-y-3">
+      {user.role === "STUDENT" && (
+        <section className="rounded-md border border-slate-200 bg-white p-3">
+          <button
+            data-keep-action-text="true"
+            className="mb-2 flex w-full items-center justify-between text-left"
+            onClick={() => setShowActivityHistory((v) => !v)}
+          >
+            <p className="text-sm font-semibold text-slate-900">
+              My Quiz Activity (Completed Quizzes)
+            </p>
+            <span className="text-xs text-slate-500">
+              {showActivityHistory ? "Hide" : "Show"}
+            </span>
+          </button>
+          {showActivityHistory && recentStudentAttempts.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">Lesson</th>
+                    <th className="px-2 py-1.5 text-left">Result</th>
+                    <th className="px-2 py-1.5 text-left">Status</th>
+                    <th className="px-2 py-1.5 text-left">Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentStudentAttempts.map((a: any) => {
+                    const pct =
+                      Number(a?.total) > 0
+                        ? (Number(a?.score || 0) * 100) / Number(a?.total || 1)
+                        : 0;
+                    const passing = Number(a?.quiz?.passingPercentage || 60);
+                    const passed = pct >= passing;
+                    return (
+                      <tr key={a.id} className="border-t border-slate-100">
+                        <td className="px-2 py-1.5">{a?.quiz?.lesson?.title || "-"}</td>
+                        <td className="px-2 py-1.5">
+                          {a?.score}/{a?.total} ({Math.round(pct)}%)
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <span
+                            className={`rounded px-2 py-0.5 ${passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}
+                          >
+                            {passed ? "Passed" : "Failed"}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {new Date(a?.createdAt || Date.now()).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : showActivityHistory ? (
+            <p className="text-xs text-slate-500">No quiz attempts yet.</p>
+          ) : null}
+        </section>
+      )}
       {selectedCourse.sections.map((section) => (
         <section
           key={section.id}
@@ -535,6 +608,9 @@ export function QuizzesTab({
                           (isClosedByInstructor ||
                             maxAttemptsReached ||
                             Boolean(blockReason));
+                        const canStudentViewResult = Boolean(
+                          quiz?.showScoreInStudentScores ?? true,
+                        );
                         return (
                           <div
                             key={quiz.id}
@@ -595,7 +671,7 @@ export function QuizzesTab({
                                     </svg>
                                   </button>
                                   <button
-                                    onClick={() => setActiveCourseTab("scores")}
+                                    onClick={() => navigate("/scores")}
                                     className="rounded border border-slate-300 p-1.5 hover:bg-white"
                                     title="View results"
                                   >
@@ -667,63 +743,149 @@ export function QuizzesTab({
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  onClick={async () => {
-                                    if (isClosedByInstructor) {
-                                      setMessage(
-                                        "Quiz is closed by instructor.",
-                                      );
-                                      return;
-                                    }
-                                    if (maxAttemptsReached) {
-                                      setMessage("Max attempts reached.");
-                                      return;
-                                    }
-                                    if (isBlocked) {
-                                      setMessage(
-                                        blockReason || "Quiz is not available.",
-                                      );
-                                      return;
-                                    }
-                                    try {
-                                      if (
-                                        quiz.mode === "URL" &&
-                                        quiz.externalUrl
-                                      ) {
-                                        window.open(
-                                          quiz.externalUrl,
-                                          "_blank",
-                                          "noopener,noreferrer",
+                                <>
+                                  <button
+                                    data-keep-action-text="true"
+                                    onClick={async () => {
+                                      if (isClosedByInstructor) {
+                                        setMessage(
+                                          "Quiz is closed by instructor.",
                                         );
                                         return;
                                       }
-                                      setTakeQuiz(quiz);
-                                      await refreshCore();
-                                    } catch (e) {
-                                      setMessage((e as Error).message);
+                                      if (maxAttemptsReached) {
+                                        setMessage("Max attempts reached.");
+                                        return;
+                                      }
+                                      if (isBlocked) {
+                                        setMessage(
+                                          blockReason || "Quiz is not available.",
+                                        );
+                                        return;
+                                      }
+                                      try {
+                                        if (
+                                          quiz.mode === "URL" &&
+                                          quiz.externalUrl
+                                        ) {
+                                          window.open(
+                                            quiz.externalUrl,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                          );
+                                          return;
+                                        }
+                                        setTakeQuiz(quiz);
+                                        await refreshCore();
+                                      } catch (e) {
+                                        setMessage((e as Error).message);
+                                      }
+                                    }}
+                                    className={`rounded p-1.5 ${isBlocked ? "cursor-not-allowed text-slate-400" : "text-slate-700 hover:text-slate-900"}`}
+                                    title={
+                                      isBlocked
+                                        ? blockReason || "Unavailable"
+                                        : myAttempt
+                                          ? "Retake quiz"
+                                          : "Start quiz"
                                     }
-                                  }}
-                                  className={`rounded p-1.5 ${isBlocked ? "cursor-not-allowed bg-slate-300 text-slate-500" : "bg-slate-900 text-white"}`}
-                                  title={
-                                    isBlocked
-                                      ? blockReason || "Unavailable"
-                                      : myAttempt
+                                    aria-label={
+                                      myAttempt
                                         ? "Retake quiz"
-                                        : "Start quiz"
-                                  }
-                                  disabled={isBlocked}
-                                  aria-disabled={isBlocked}
-                                >
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
+                                        : quiz.mode === "URL"
+                                          ? "Open quiz link"
+                                          : "Start quiz"
+                                    }
+                                    disabled={isBlocked}
+                                    aria-disabled={isBlocked}
                                   >
-                                    <path d="M8 5v14l11-7z" />
-                                  </svg>
-                                </button>
+                                    {myAttempt ? (
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                      >
+                                        <path d="M3 12a9 9 0 1 0 3-6.7" />
+                                        <path d="M3 4v6h6" />
+                                      </svg>
+                                    ) : quiz.mode === "URL" ? (
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                      >
+                                        <path d="M14 3h7v7" />
+                                        <path d="M10 14L21 3" />
+                                        <path d="M21 14v7h-7" />
+                                        <path d="M3 10V3h7" />
+                                        <path d="M3 21l7-7" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                      >
+                                        <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                  <button
+                                    data-keep-action-text="true"
+                                    className={`rounded p-1.5 disabled:opacity-50 ${latestAttempt && canStudentViewResult ? "text-slate-700 hover:text-slate-900" : "text-slate-400"}`}
+                                    disabled={!latestAttempt || !canStudentViewResult}
+                                    onClick={async () => {
+                                      if (!latestAttempt) return;
+                                      if (!canStudentViewResult) {
+                                        setMessage(
+                                          "Quiz results are hidden by instructor.",
+                                        );
+                                        return;
+                                      }
+                                      try {
+                                        setStudentResultOpen(true);
+                                        setStudentResultLoading(true);
+                                        const result = await api(
+                                          `/quizzes/${quiz.id}/results/me`,
+                                          { headers },
+                                        );
+                                        setStudentResultData(result);
+                                      } catch (e) {
+                                        setMessage((e as Error).message);
+                                        setStudentResultOpen(false);
+                                      } finally {
+                                        setStudentResultLoading(false);
+                                      }
+                                    }}
+                                    title={
+                                      !canStudentViewResult
+                                        ? "Result is hidden by instructor"
+                                        : "View result"
+                                    }
+                                    aria-label={
+                                      !canStudentViewResult
+                                        ? "Result is hidden by instructor"
+                                        : "View result"
+                                    }
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    >
+                                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                                      <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1283,6 +1445,70 @@ export function QuizzesTab({
                 Save Settings
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {studentResultOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-4 shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold">Quiz Result</p>
+              <button
+                className="rounded border border-slate-300 px-2 py-1 text-xs"
+                onClick={() => {
+                  setStudentResultOpen(false);
+                  setStudentResultData(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+            {studentResultLoading ? (
+              <p className="text-sm text-slate-500">Loading result...</p>
+            ) : !studentResultData ? (
+              <p className="text-sm text-slate-500">No result data.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-semibold text-slate-900">
+                    {studentResultData?.quiz?.title || "Quiz"}
+                  </p>
+                  <p className="text-slate-600">
+                    Block: {studentResultData?.quiz?.sectionName || "N/A"}
+                  </p>
+                  <p className="text-slate-600">
+                    Lesson: {studentResultData?.quiz?.lessonTitle || "N/A"}
+                  </p>
+                  <p className="font-semibold text-blue-700">
+                    Score: {studentResultData?.score}/{studentResultData?.total}
+                  </p>
+                </div>
+                {!studentResultData?.quiz?.canViewAnswerKey ? (
+                  <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    Answer key is hidden by instructor.
+                  </p>
+                ) : (
+                  <div className="max-h-[45vh] space-y-2 overflow-auto">
+                    {(studentResultData?.questions || []).map((q: any, idx: number) => (
+                      <div key={q.id} className="rounded border border-slate-200 p-2 text-xs">
+                        <p className="font-semibold text-slate-900">
+                          Q{idx + 1}. {q.prompt}
+                        </p>
+                        <p className="text-slate-600">
+                          Your answer: {q.studentAnswer || "(no answer)"}
+                        </p>
+                        <p className="text-slate-600">
+                          Correct answer: {q.correctAnswer || "-"}
+                        </p>
+                        <p className={q.isCorrect ? "text-emerald-700" : "text-rose-700"}>
+                          {q.isCorrect ? "Correct" : "Incorrect"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

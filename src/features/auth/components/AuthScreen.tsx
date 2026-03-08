@@ -193,6 +193,7 @@ export function AuthScreen({
 
           <form
             onSubmit={onSubmit}
+            data-auth-form="true"
             className={`rounded-none border p-8 shadow-xl backdrop-blur-sm transition-colors ${
               isDark
                 ? "border-blue-500/40 bg-slate-950/80 text-slate-100"
@@ -361,6 +362,7 @@ export function AuthScreen({
 
             <button
               disabled={isSubmitting}
+              data-keep-action-text="true"
               className="w-full rounded-lg bg-blue-600 px-5 py-2.5 text-base font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isSubmitting ? "Please wait..." : mode === "login" ? "Sign In" : "Submit Registration"}

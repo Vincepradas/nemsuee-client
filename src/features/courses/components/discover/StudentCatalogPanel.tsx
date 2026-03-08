@@ -56,7 +56,7 @@ export function StudentCatalogPanel(props: {
   if (userRole !== "STUDENT" || studentViewMode === "my") return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-students-hub="true">
       <div className="rounded-md border border-slate-200 p-3">
         <h3 className="mb-2 font-semibold">Discover Courses</h3>
         <form
@@ -111,7 +111,10 @@ export function StudentCatalogPanel(props: {
               </div>
             )}
           </div>
-          <button className="rounded bg-blue-700 px-3 py-2 text-sm text-white">
+          <button
+            data-keep-action-text="true"
+            className="rounded bg-blue-700 px-3 py-2 text-sm text-white"
+          >
             Search
           </button>
         </form>

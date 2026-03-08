@@ -1,23 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Course } from "../../../shared/types/lms";
+import { AdminSettingsPanel } from "./AdminSettingsPanel";
+import { AddBlockModal, ManageBlockModal } from "./management/BlockModals";
+import { CollapsibleSection } from "./management/CollapsibleSection";
+import {
+  EditCourseModal,
+  CourseConfigurationSection,
+} from "./management/CourseConfigurationSection";
+import {
+  AssignOfferingInstructorModal,
+  CreateOfferingModal,
+} from "./management/OfferingModals";
+import { InstructorManagementSection } from "./management/InstructorManagementSection";
+import { SummaryMetrics } from "./management/SummaryMetrics";
+import { CreateTermModal, EditTermModal } from "./management/TermModals";
+import { AcademicWorkflowTreeCard } from "../../academic/components/AcademicWorkflowTreeCard";
+import { CourseCatalogManager } from "../../academic/components/CourseCatalogManager";
+import { CourseOfferingManager } from "../../academic/components/CourseOfferingManager";
+import { EnrollmentManager } from "../../academic/components/EnrollmentManager";
+import { InstructorAssignmentManager } from "../../academic/components/InstructorAssignmentManager";
+import { SectionManager } from "../../academic/components/SectionManager";
+import { TermManagement } from "../../academic/components/TermManagement";
+import { buildAcademicWorkflowTree } from "../../academic/services/academicWorkflowService";
+import type {
+  AcademicTerm,
+  Instructor,
+  InstructorApplication,
+  SectionInstructor,
+  TermOffering,
+} from "./management/types";
 
-type Instructor = { id: number; fullName: string; email: string };
-type SectionInstructor = {
-  id: number;
-  role?: string | null;
-  instructorId: number;
-  fullName: string;
-  email: string;
-};
-type InstructorApplication = {
-  id: number;
-  userId: number;
-  status: "PENDING" | "APPROVED" | "REJECTED" | string;
-  note?: string | null;
-  fullName: string;
-  email: string;
-  createdAt: string;
-};
+type SectionKey =
+  | "terms"
+  | "offerings"
+  | "instructors"
+  | "catalog"
+  | "courseConfig"
+  | "blocks"
+  | "assignments"
+  | "enrollments";
 
 export function AdminBlocksHub(props: {
   api: any;
@@ -28,83 +49,253 @@ export function AdminBlocksHub(props: {
 }) {
   const { api, headers, courses, refreshCore, setMessage } = props;
 
-  const [courseQuery, setCourseQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"create_course" | "block_admin">(
-    "create_course",
+  const [activeTab, setActiveTab] = useState<"management" | "admin_settings">(
+    "management",
   );
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+    terms: true,
+    offerings: true,
+    instructors: true,
+    catalog: true,
+    courseConfig: true,
+    blocks: true,
+    assignments: true,
+    enrollments: true,
+  });
+
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [applications, setApplications] = useState<InstructorApplication[]>([]);
+  const [terms, setTerms] = useState<AcademicTerm[]>([]);
+  const [selectedTermId, setSelectedTermId] = useState<number | null>(null);
+  const [termOfferings, setTermOfferings] = useState<TermOffering[]>([]);
+
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(
     courses[0]?.id || null,
   );
-  const [newCourseTitle, setNewCourseTitle] = useState("");
-  const [newCourseDescription, setNewCourseDescription] = useState("");
-  const [editCourseTitle, setEditCourseTitle] = useState("");
-  const [editCourseDescription, setEditCourseDescription] = useState("");
-  const [showCourseMenu, setShowCourseMenu] = useState(false);
-  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
-  const [showCourseOptions, setShowCourseOptions] = useState(false);
-  const [newBlockName, setNewBlockName] = useState("");
-  const [editingSectionName, setEditingSectionName] = useState("");
-  const [managingSectionId, setManagingSectionId] = useState<number | null>(
-    null,
-  );
-  const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [sectionInstructors, setSectionInstructors] = useState<
     Record<number, SectionInstructor[]>
   >({});
-  const [assignBySection, setAssignBySection] = useState<
-    Record<number, number | null>
+  const [studentCountBySection, setStudentCountBySection] = useState<
+    Record<number, number>
   >({});
-  const [instructorQueryBySection, setInstructorQueryBySection] = useState<
-    Record<number, string>
-  >({});
-  const [showInstructorOptions, setShowInstructorOptions] = useState(false);
-  const [applications, setApplications] = useState<InstructorApplication[]>([]);
 
-  const filteredCourses = useMemo(() => {
-    const q = courseQuery.trim().toLowerCase();
-    if (!q) return courses;
-    return courses.filter((c) => {
-      const bag = `${c.title} ${c.description || ""}`.toLowerCase();
-      return bag.includes(q);
-    });
-  }, [courses, courseQuery]);
-  const courseOptions = useMemo(
-    () => filteredCourses.slice(0, 30),
-    [filteredCourses],
+  const [offeringQuery, setOfferingQuery] = useState("");
+  const [offeringInstructorFilter, setOfferingInstructorFilter] =
+    useState("ALL");
+  const [courseConfigQuery, setCourseConfigQuery] = useState("");
+
+  const [showCreateTermModal, setShowCreateTermModal] = useState(false);
+  const [newTermName, setNewTermName] = useState("1st Semester");
+  const [newTermAcademicYear, setNewTermAcademicYear] = useState("2026 - 2027");
+  const [editingTermId, setEditingTermId] = useState<number | null>(null);
+  const [editingTermName, setEditingTermName] = useState("");
+  const [editingTermYear, setEditingTermYear] = useState("");
+
+  const [showCreateOfferingModal, setShowCreateOfferingModal] = useState(false);
+  const [newOfferingTitle, setNewOfferingTitle] = useState("");
+  const [newOfferingDescription, setNewOfferingDescription] = useState("");
+  const [newOfferingInstructorId, setNewOfferingInstructorId] = useState<
+    number | null
+  >(null);
+  const [assignOfferingTarget, setAssignOfferingTarget] =
+    useState<TermOffering | null>(null);
+  const [assignOfferingInstructorQuery, setAssignOfferingInstructorQuery] =
+    useState("");
+
+  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
+  const [editCourseTitle, setEditCourseTitle] = useState("");
+  const [editCourseDescription, setEditCourseDescription] = useState("");
+
+  const [showAddBlockModal, setShowAddBlockModal] = useState(false);
+  const [newBlockName, setNewBlockName] = useState("");
+  const [managingSectionId, setManagingSectionId] = useState<number | null>(
+    null,
+  );
+  const [editingSectionName, setEditingSectionName] = useState("");
+  const [manageBlockInstructorQuery, setManageBlockInstructorQuery] =
+    useState("");
+
+  const activeTerm = useMemo(
+    () => terms.find((term) => Number(term.isActive) === 1) || null,
+    [terms],
   );
 
   const selectedCourse = useMemo(
-    () => courses.find((c) => c.id === selectedCourseId) || null,
+    () => courses.find((course) => course.id === selectedCourseId) || null,
     [courses, selectedCourseId],
   );
-  const selectedFilteredCourse = useMemo(
-    () => filteredCourses.find((c) => c.id === selectedCourseId) || null,
-    [filteredCourses, selectedCourseId],
-  );
-  const activeBlockAdminCourse =
-    selectedFilteredCourse || filteredCourses[0] || null;
+
   const managingSection = useMemo(
     () =>
-      selectedCourse?.sections.find((s) => s.id === managingSectionId) || null,
+      selectedCourse?.sections.find((section) => section.id === managingSectionId) ||
+      null,
     [selectedCourse, managingSectionId],
   );
-  const activeAssignedInstructor = useMemo(() => {
-    if (!managingSection) return null;
-    const id = assignBySection[managingSection.id];
-    return instructors.find((i) => i.id === id) || null;
-  }, [assignBySection, instructors, managingSection?.id]);
-  const filteredInstructorOptions = useMemo(() => {
-    if (!managingSection) return [];
-    const query = (instructorQueryBySection[managingSection.id] || "")
-      .trim()
-      .toLowerCase();
-    const base = instructors.filter((i) => {
-      if (!query) return true;
-      const bag = `${i.fullName} ${i.email}`.toLowerCase();
-      return bag.includes(query);
+
+  const filteredConfigCourses = useMemo(() => {
+    const q = courseConfigQuery.trim().toLowerCase();
+    if (!q) return courses;
+    return courses.filter((course) => {
+      const bag = `${course.title} ${course.description || ""}`.toLowerCase();
+      return bag.includes(q);
     });
-    return base.slice(0, 30);
-  }, [instructorQueryBySection, instructors, managingSection?.id]);
+  }, [courseConfigQuery, courses]);
+
+  const filteredOfferings = useMemo(() => {
+    const q = offeringQuery.trim().toLowerCase();
+    return termOfferings.filter((offering) => {
+      if (offeringInstructorFilter !== "ALL") {
+        if (String(offering.instructorId || "") !== offeringInstructorFilter) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      const bag =
+        `${offering.title} ${offering.description || ""} ${offering.instructorName || ""}`.toLowerCase();
+      return bag.includes(q);
+    });
+  }, [offeringInstructorFilter, offeringQuery, termOfferings]);
+
+  const instructorLabelMap = useMemo(() => {
+    const map = new Map<string, Instructor>();
+    instructors.forEach((instructor) => {
+      map.set(`${instructor.fullName} (${instructor.email})`, instructor);
+    });
+    return map;
+  }, [instructors]);
+
+  const summary = useMemo(() => {
+    const coursesOffered = termOfferings.length;
+    const instructorsAssigned = new Set(
+      termOfferings
+        .map((offering) => Number(offering.instructorId || 0))
+        .filter((id) => id > 0),
+    ).size;
+    const totalBlocks = courses.reduce(
+      (sum, course) => sum + course.sections.length,
+      0,
+    );
+    return { coursesOffered, instructorsAssigned, totalBlocks };
+  }, [courses, termOfferings]);
+
+  const sectionInstructorLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(sectionInstructors).map(([sectionId, assignments]) => [
+          Number(sectionId),
+          assignments.map((assignment) => assignment.fullName),
+        ]),
+      ) as Record<number, string[]>,
+    [sectionInstructors],
+  );
+
+  const workflowTree = useMemo(() => {
+    const activeTermLabel = activeTerm
+      ? `${activeTerm.academicYear} - ${activeTerm.name}`
+      : "No active term";
+    return buildAcademicWorkflowTree(
+      courses,
+      studentCountBySection,
+      sectionInstructorLabels,
+      activeTermLabel,
+    );
+  }, [activeTerm, courses, sectionInstructorLabels, studentCountBySection]);
+
+  function toggleSection(section: SectionKey) {
+    setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  }
+
+  async function loadInstructors() {
+    try {
+      const rows = await api("/courses/instructors", { headers });
+      setInstructors(rows || []);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function loadApplications() {
+    try {
+      const rows = await api("/auth/instructor-applications", { headers });
+      setApplications(rows || []);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function loadTerms() {
+    try {
+      const rows = await api("/terms", { headers });
+      setTerms(rows || []);
+      const active = (rows || []).find(
+        (term: AcademicTerm) => Number(term.isActive) === 1,
+      );
+      const fallbackId = Number(active?.id || rows?.[0]?.id || 0);
+      if (fallbackId) setSelectedTermId((prev) => prev || fallbackId);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function loadOfferings(termId: number) {
+    try {
+      const rows = await api(`/terms/${termId}/offerings`, { headers });
+      setTermOfferings(rows || []);
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function loadSectionInstructors(sectionId: number, courseId: number) {
+    try {
+      const rows = await api(
+        `/courses/${courseId}/sections/${sectionId}/instructors`,
+        { headers },
+      );
+      const normalized = (rows || []).map((row: any) => ({
+        id: row.id,
+        role: row.role,
+        instructorId: row.instructorId || row.instructor?.id,
+        fullName: row.fullName || row.instructor?.fullName,
+        email: row.email || row.instructor?.email,
+      }));
+      setSectionInstructors((prev) => ({ ...prev, [sectionId]: normalized }));
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function loadStudentCounts(courseId: number, sectionIds: number[]) {
+    try {
+      const rows = await api(`/courses/${courseId}/students`, { headers });
+      const counts: Record<number, number> = {};
+      sectionIds.forEach((id) => {
+        counts[id] = 0;
+      });
+      (rows || []).forEach((row: any) => {
+        const sectionId = Number(row?.section?.id || row?.sectionId || 0);
+        if (sectionId in counts) counts[sectionId] += 1;
+      });
+      setStudentCountBySection((prev) => ({ ...prev, ...counts }));
+    } catch {
+      const counts: Record<number, number> = {};
+      sectionIds.forEach((id) => {
+        counts[id] = 0;
+      });
+      setStudentCountBySection((prev) => ({ ...prev, ...counts }));
+    }
+  }
+
+  useEffect(() => {
+    loadInstructors();
+    loadApplications();
+    loadTerms();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTermId) return;
+    loadOfferings(selectedTermId);
+  }, [selectedTermId]);
 
   useEffect(() => {
     if (!selectedCourseId && courses[0]) {
@@ -120,732 +311,572 @@ export function AdminBlocksHub(props: {
   }, [courses, selectedCourseId]);
 
   useEffect(() => {
-    if (activeTab !== "block_admin") return;
-    if (!activeBlockAdminCourse) return;
-    if (selectedCourseId !== activeBlockAdminCourse.id) {
-      setSelectedCourseId(activeBlockAdminCourse.id);
-    }
-  }, [activeTab, activeBlockAdminCourse?.id, selectedCourseId]);
-
-  async function loadInstructors() {
-    try {
-      const rows = await api("/courses/instructors", { headers });
-      setInstructors(rows);
-    } catch (e) {
-      setMessage((e as Error).message);
-    }
-  }
-
-  async function loadApplications() {
-    try {
-      const rows = await api("/auth/instructor-applications", { headers });
-      setApplications(rows);
-    } catch (e) {
-      setMessage((e as Error).message);
-    }
-  }
-
-  async function loadSectionInstructors(sectionId: number, courseId: number) {
-    try {
-      const rows = await api(
-        `/courses/${courseId}/sections/${sectionId}/instructors`,
-        { headers },
-      );
-      const normalized = rows.map((r: any) => ({
-        id: r.id,
-        role: r.role,
-        instructorId: r.instructorId || r.instructor?.id,
-        fullName: r.fullName || r.instructor?.fullName,
-        email: r.email || r.instructor?.email,
-      }));
-      setSectionInstructors((p) => ({ ...p, [sectionId]: normalized }));
-      if (!assignBySection[sectionId] && instructors[0]) {
-        setAssignBySection((p) => ({ ...p, [sectionId]: instructors[0].id }));
-      }
-    } catch (e) {
-      setMessage((e as Error).message);
-    }
-  }
-
-  useEffect(() => {
-    loadInstructors();
-    loadApplications();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedCourse) return;
-    selectedCourse.sections.forEach((s) => {
-      loadSectionInstructors(s.id, selectedCourse.id);
-    });
-  }, [selectedCourse?.id, courses.length]);
-
-  useEffect(() => {
-    if (!instructors.length || !selectedCourse) return;
-    const updates: Record<number, number> = {};
-    selectedCourse.sections.forEach((s) => {
-      if (!assignBySection[s.id]) updates[s.id] = instructors[0].id;
-    });
-    if (Object.keys(updates).length) {
-      setAssignBySection((p) => ({ ...p, ...updates }));
-    }
-  }, [instructors, selectedCourse?.id]);
-
-  useEffect(() => {
     if (!selectedCourse) return;
     setEditCourseTitle(selectedCourse.title || "");
     setEditCourseDescription(selectedCourse.description || "");
-    setShowCourseMenu(false);
-    setShowEditCourseModal(false);
-  }, [selectedCourse?.id, selectedCourse?.title, selectedCourse?.description]);
+    selectedCourse.sections.forEach((section) => {
+      loadSectionInstructors(section.id, selectedCourse.id);
+    });
+    loadStudentCounts(
+      selectedCourse.id,
+      selectedCourse.sections.map((section) => section.id),
+    );
+  }, [selectedCourse?.id, courses.length]);
 
   useEffect(() => {
     if (!managingSection) return;
     setEditingSectionName(managingSection.name);
-    const selected = assignBySection[managingSection.id];
-    const current = instructors.find((i) => i.id === selected);
-    setInstructorQueryBySection((p) => ({
-      ...p,
-      [managingSection.id]: current
-        ? `${current.fullName} (${current.email})`
-        : "",
-    }));
-    setShowInstructorOptions(false);
-  }, [
-    managingSection?.id,
-    managingSection?.name,
-    assignBySection,
-    instructors,
-  ]);
+    setManageBlockInstructorQuery("");
+  }, [managingSection?.id, managingSection?.name]);
+
+  async function handleCreateTerm() {
+    try {
+      await api("/terms", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: newTermName,
+          academicYear: newTermAcademicYear,
+        }),
+      });
+      await loadTerms();
+      setShowCreateTermModal(false);
+      setMessage("Academic term created.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleActivateTerm(termId: number) {
+    try {
+      await api(`/terms/${termId}/activate`, { method: "PATCH", headers });
+      await loadTerms();
+      await refreshCore();
+      setMessage("Active term updated.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleToggleArchiveTerm(term: AcademicTerm) {
+    try {
+      await api(`/terms/${term.id}/archive`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ archived: Number(term.isArchived) ? false : true }),
+      });
+      await loadTerms();
+      setMessage(Number(term.isArchived) ? "Term unarchived." : "Term archived.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleDeleteTerm(term: AcademicTerm) {
+    const ok = confirm(`Delete term "${term.academicYear} - ${term.name}"?`);
+    if (!ok) return;
+    try {
+      await api(`/terms/${term.id}`, { method: "DELETE", headers });
+      await loadTerms();
+      setMessage("Term deleted.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleSaveEditedTerm() {
+    if (!editingTermId) return;
+    try {
+      await api(`/terms/${editingTermId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({
+          name: editingTermName,
+          academicYear: editingTermYear,
+        }),
+      });
+      await loadTerms();
+      setEditingTermId(null);
+      setMessage("Term updated.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleCreateOffering() {
+    if (!selectedTermId) return;
+    try {
+      await api(`/terms/${selectedTermId}/offerings`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          title: newOfferingTitle,
+          description: newOfferingDescription,
+          instructorId: newOfferingInstructorId,
+        }),
+      });
+      setNewOfferingTitle("");
+      setNewOfferingDescription("");
+      setNewOfferingInstructorId(null);
+      await loadOfferings(selectedTermId);
+      await refreshCore();
+      setShowCreateOfferingModal(false);
+      setMessage("Course offering created.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleAssignOfferingInstructor() {
+    if (!assignOfferingTarget?.courseId) {
+      setMessage("Offering has no linked course.");
+      return;
+    }
+    const exact = instructorLabelMap.get(assignOfferingInstructorQuery);
+    const fallback = instructors.find((instructor) => {
+      const bag = `${instructor.fullName} ${instructor.email}`.toLowerCase();
+      return bag.includes(assignOfferingInstructorQuery.trim().toLowerCase());
+    });
+    const picked = exact || fallback;
+    if (!picked) {
+      setMessage("Select a valid instructor.");
+      return;
+    }
+    try {
+      await api(`/courses/${assignOfferingTarget.courseId}/instructors`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ instructorId: picked.id }),
+      });
+      if (selectedTermId) await loadOfferings(selectedTermId);
+      await refreshCore();
+      setAssignOfferingTarget(null);
+      setAssignOfferingInstructorQuery("");
+      setMessage("Offering instructor updated.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleApplicationDecision(
+    userId: number,
+    status: "APPROVED" | "REJECTED",
+  ) {
+    try {
+      await api(`/auth/instructor-applications/${userId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status }),
+      });
+      await loadApplications();
+      setMessage(status === "APPROVED" ? "Instructor approved." : "Instructor rejected.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleDeleteSelectedCourse() {
+    if (!selectedCourse) return;
+    const ok = confirm(
+      `Delete ${selectedCourse.title}? This removes blocks, lessons, and enrollments.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/courses/${selectedCourse.id}`, { method: "DELETE", headers });
+      await refreshCore();
+      setMessage("Course deleted.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleSaveCourseChanges() {
+    if (!selectedCourse) return;
+    try {
+      await api(`/courses/${selectedCourse.id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          title: editCourseTitle,
+          description: editCourseDescription,
+        }),
+      });
+      await refreshCore();
+      setShowEditCourseModal(false);
+      setMessage("Course updated.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleAddBlock() {
+    if (!selectedCourse) return;
+    try {
+      await api(`/courses/${selectedCourse.id}/sections`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: newBlockName }),
+      });
+      setNewBlockName("");
+      await refreshCore();
+      setShowAddBlockModal(false);
+      setMessage("Block created.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleDeleteBlock(sectionId: number) {
+    if (!selectedCourse) return;
+    const section = selectedCourse.sections.find((s) => s.id === sectionId);
+    const ok = confirm(
+      `Delete ${section?.name || "block"}? This removes lessons and resources tied to the block.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/courses/${selectedCourse.id}/sections/${sectionId}`, {
+        method: "DELETE",
+        headers,
+      });
+      await refreshCore();
+      setMessage("Block deleted.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleSaveBlockName() {
+    if (!selectedCourse || !managingSection) return;
+    try {
+      await api(`/courses/${selectedCourse.id}/sections/${managingSection.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ name: editingSectionName }),
+      });
+      await refreshCore();
+      setMessage("Block updated.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleRemoveBlockInstructor(
+    instructorId: number,
+    fullName: string,
+  ) {
+    if (!selectedCourse || !managingSection) return;
+    const ok = confirm(`Remove ${fullName} from ${managingSection.name}?`);
+    if (!ok) return;
+    try {
+      await api(
+        `/courses/${selectedCourse.id}/sections/${managingSection.id}/instructors/${instructorId}`,
+        { method: "DELETE", headers },
+      );
+      await loadSectionInstructors(managingSection.id, selectedCourse.id);
+      setMessage("Instructor removed from block.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
+
+  async function handleAssignInstructorToBlock() {
+    if (!selectedCourse || !managingSection) return;
+    const exact = instructorLabelMap.get(manageBlockInstructorQuery);
+    const fallback = instructors.find((instructor) => {
+      const bag = `${instructor.fullName} ${instructor.email}`.toLowerCase();
+      return bag.includes(manageBlockInstructorQuery.trim().toLowerCase());
+    });
+    const picked = exact || fallback;
+    if (!picked) {
+      setMessage("Please select an instructor.");
+      return;
+    }
+    try {
+      await api(
+        `/courses/${selectedCourse.id}/sections/${managingSection.id}/instructors`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ instructorId: picked.id }),
+        },
+      );
+      await loadSectionInstructors(managingSection.id, selectedCourse.id);
+      setManageBlockInstructorQuery("");
+      setMessage("Instructor assigned to block.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    }
+  }
 
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setActiveTab("create_course")}
+          onClick={() => setActiveTab("management")}
           className={`rounded-md px-3 py-2 text-sm font-medium ${
-            activeTab === "create_course"
+            activeTab === "management"
               ? "bg-blue-700 text-white"
               : "border border-slate-300 bg-white text-slate-700"
           }`}
         >
-          Create Course
+          Academic Management
         </button>
         <button
-          onClick={() => setActiveTab("block_admin")}
+          onClick={() => setActiveTab("admin_settings")}
           className={`rounded-md px-3 py-2 text-sm font-medium ${
-            activeTab === "block_admin"
+            activeTab === "admin_settings"
               ? "bg-blue-700 text-white"
               : "border border-slate-300 bg-white text-slate-700"
           }`}
         >
-          Block Admin
+          Admin Settings
         </button>
       </div>
 
-      {activeTab === "create_course" && (
-        <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-lg font-semibold">Create Course</h3>
-          <p className="mb-3 text-xs text-slate-500">
-            Create a new subject. Instructor assignment is done per block.
-          </p>
-          <div className="grid gap-2 md:grid-cols-2">
-            <input
-              value={newCourseTitle}
-              onChange={(e) => setNewCourseTitle(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder="New course title"
-            />
-            <textarea
-              value={newCourseDescription}
-              onChange={(e) => setNewCourseDescription(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder="New course description"
-            />
-            <button
-              onClick={async () => {
-                try {
-                  await api("/courses", {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                      title: newCourseTitle,
-                      description: newCourseDescription,
-                    }),
-                  });
-                  setNewCourseTitle("");
-                  setNewCourseDescription("");
-                  await refreshCore();
-                  setMessage("Course created.");
-                } catch (e) {
-                  setMessage((e as Error).message);
-                }
-              }}
-              className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white md:col-span-2"
-            >
-              Create Course
-            </button>
-          </div>
-        </article>
+      {activeTab === "admin_settings" && (
+        <AdminSettingsPanel api={api} headers={headers} setMessage={setMessage} />
       )}
 
-      <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold">
-              Instructor Registration Review
-            </h3>
-            <p className="text-xs text-slate-500">
-              Approve or reject instructor accounts before they can log in.
-            </p>
-          </div>
-          <button
-            onClick={() => loadApplications()}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-          >
-            Refresh
-          </button>
-        </div>
-        <div className="space-y-2">
-          {applications.map((app) => (
-            <article
-              key={app.id}
-              className="rounded-md border border-slate-200 p-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium">{app.fullName}</p>
-                  <p className="text-xs text-slate-500">{app.email}</p>
-                  <p className="mt-1 text-xs">
-                    <span
-                      className={`rounded px-2 py-0.5 ${
-                        app.status === "APPROVED"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : app.status === "REJECTED"
-                            ? "bg-rose-100 text-rose-700"
-                            : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {app.status}
-                    </span>
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await api(
-                          `/auth/instructor-applications/${app.userId}`,
-                          {
-                            method: "PATCH",
-                            headers,
-                            body: JSON.stringify({ status: "APPROVED" }),
-                          },
-                        );
-                        await loadApplications();
-                        setMessage("Instructor approved.");
-                      } catch (e) {
-                        setMessage((e as Error).message);
-                      }
-                    }}
-                    className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await api(
-                          `/auth/instructor-applications/${app.userId}`,
-                          {
-                            method: "PATCH",
-                            headers,
-                            body: JSON.stringify({ status: "REJECTED" }),
-                          },
-                        );
-                        await loadApplications();
-                        setMessage("Instructor rejected.");
-                      } catch (e) {
-                        setMessage((e as Error).message);
-                      }
-                    }}
-                    className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-          {!applications.length && (
-            <p className="text-sm text-slate-500">
-              No instructor applications.
-            </p>
-          )}
-        </div>
-      </article>
-
-      {activeTab === "block_admin" && activeBlockAdminCourse && (
+      {activeTab === "management" && (
         <div className="space-y-4">
-          <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="relative">
-              <input
-                value={courseQuery}
-                onChange={(e) => {
-                  setCourseQuery(e.target.value);
-                  setShowCourseOptions(true);
-                }}
-                onFocus={() => setShowCourseOptions(true)}
-                onBlur={() =>
-                  setTimeout(() => setShowCourseOptions(false), 120)
-                }
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Search and select a course"
-              />
-              {showCourseOptions && (
-                <div className="absolute left-0 right-0 top-11 z-20 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg">
-                  {courseOptions.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setSelectedCourseId(c.id);
-                        setCourseQuery(c.title);
-                        setShowCourseOptions(false);
-                      }}
-                      className={`w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100 ${
-                        c.id === activeBlockAdminCourse.id ? "bg-slate-100" : ""
-                      }`}
-                    >
-                      <p className="font-medium">{c.title}</p>
-                      <p className="truncate text-xs text-slate-500">
-                        {c.description}
-                      </p>
-                    </button>
-                  ))}
-                  {!courseOptions.length && (
-                    <p className="px-3 py-2 text-xs text-slate-500">
-                      No matching courses.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </article>
+          <SummaryMetrics
+            activeTerm={activeTerm}
+            coursesOffered={summary.coursesOffered}
+            instructorsAssigned={summary.instructorsAssigned}
+            totalBlocks={summary.totalBlocks}
+          />
+          <AcademicWorkflowTreeCard tree={workflowTree} />
 
-          <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="mb-1 text-lg font-semibold">Course Settings</h3>
-                <p className="text-xs text-slate-500">
-                  Configure course-level details only.
-                </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">
-                  {activeBlockAdminCourse.title}
-                </p>
-                <p className="text-sm text-slate-600">
-                  {activeBlockAdminCourse.description}
-                </p>
-              </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowCourseMenu((v) => !v)}
-                  className="rounded-md border border-slate-300 p-2"
-                  aria-label="Open course actions"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
-                    <circle cx="12" cy="5" r="1.8" />
-                    <circle cx="12" cy="12" r="1.8" />
-                    <circle cx="12" cy="19" r="1.8" />
-                  </svg>
-                </button>
-                {showCourseMenu && (
-                  <div className="absolute right-0 top-10 z-20 w-44 rounded-md border border-slate-200 bg-white p-1 shadow-lg">
-                    <button
-                      onClick={() => {
-                        setShowEditCourseModal(true);
-                        setShowCourseMenu(false);
-                      }}
-                      className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
-                    >
-                      Edit Course
-                    </button>
-                    <button
-                      onClick={async () => {
-                        setShowCourseMenu(false);
-                        const ok = confirm(
-                          `Delete ${activeBlockAdminCourse.title}? This permanently removes blocks, lessons, and enrollments.`,
-                        );
-                        if (!ok) return;
-                        try {
-                          await api(`/courses/${activeBlockAdminCourse.id}`, {
-                            method: "DELETE",
-                            headers,
-                          });
-                          await refreshCore();
-                          setMessage("Course deleted.");
-                        } catch (e) {
-                          setMessage((e as Error).message);
-                        }
-                      }}
-                      className="w-full rounded px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50"
-                    >
-                      Delete Course
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </article>
+          <CollapsibleSection
+            title="Academic Terms"
+            description="Manage term lifecycle and activation."
+            isOpen={openSections.terms}
+            onToggle={() => toggleSection("terms")}
+          >
+            <TermManagement
+              terms={terms}
+              onCreateTerm={() => setShowCreateTermModal(true)}
+              onEditTerm={(term) => {
+                setEditingTermId(term.id);
+                setEditingTermName(term.name);
+                setEditingTermYear(term.academicYear);
+              }}
+              onActivateTerm={handleActivateTerm}
+              onToggleArchiveTerm={handleToggleArchiveTerm}
+              onDeleteTerm={handleDeleteTerm}
+            />
+          </CollapsibleSection>
 
-          <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <h3 className="text-lg font-semibold">Blocks</h3>
-                <p className="text-xs text-slate-500">
-                  Add and manage blocks. Instructor assignment is inside each
-                  block panel.
-                </p>
-              </div>
-              <span className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                {activeBlockAdminCourse.sections.length} block(s)
-              </span>
-            </div>
+          <CollapsibleSection
+            title="Course Offerings"
+            description="Table-based offerings with search and filters."
+            isOpen={openSections.offerings}
+            onToggle={() => toggleSection("offerings")}
+          >
+            <CourseOfferingManager
+              offerings={filteredOfferings}
+              courses={courses}
+              terms={terms}
+              instructors={instructors}
+              selectedTermId={selectedTermId}
+              offeringQuery={offeringQuery}
+              instructorFilter={offeringInstructorFilter}
+              onChangeOfferingQuery={setOfferingQuery}
+              onChangeInstructorFilter={setOfferingInstructorFilter}
+              onChangeTermId={setSelectedTermId}
+              onCreateOffering={() => setShowCreateOfferingModal(true)}
+              onManageOffering={(offering) => {
+                if (offering.courseId) setSelectedCourseId(Number(offering.courseId));
+                setOpenSections((prev) => ({
+                  ...prev,
+                  courseConfig: true,
+                  blocks: true,
+                }));
+              }}
+              onAssignInstructor={(offering) => {
+                setAssignOfferingTarget(offering);
+                const current = instructors.find(
+                  (i) => i.id === Number(offering.instructorId || 0),
+                );
+                setAssignOfferingInstructorQuery(
+                  current ? `${current.fullName} (${current.email})` : "",
+                );
+              }}
+            />
+          </CollapsibleSection>
 
-            <div className="mb-4 grid gap-2 md:grid-cols-[1fr_auto]">
-              <input
-                value={newBlockName}
-                onChange={(e) => setNewBlockName(e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Add block (e.g., BLOCK-D)"
-              />
-              <button
-                onClick={async () => {
-                  try {
-                    await api(
-                      `/courses/${activeBlockAdminCourse.id}/sections`,
-                      {
-                        method: "POST",
-                        headers,
-                        body: JSON.stringify({ name: newBlockName }),
-                      },
-                    );
-                    setNewBlockName("");
-                    await refreshCore();
-                    setMessage("Block created.");
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  }
-                }}
-                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white"
-              >
-                Add Block
-              </button>
-            </div>
+          <CollapsibleSection
+            title="Instructor Management"
+            description="Approve or reject instructor registration requests."
+            isOpen={openSections.instructors}
+            onToggle={() => toggleSection("instructors")}
+          >
+            <InstructorManagementSection
+              applications={applications}
+              onRefresh={loadApplications}
+              onApprove={(userId) => handleApplicationDecision(userId, "APPROVED")}
+              onReject={(userId) => handleApplicationDecision(userId, "REJECTED")}
+            />
+          </CollapsibleSection>
 
-            <div className="space-y-2">
-              {activeBlockAdminCourse.sections.map((s) => (
-                <article
-                  key={s.id}
-                  className="flex items-center justify-between rounded-md border border-slate-200 p-3"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-900">{s.name}</p>
-                    <p className="text-xs text-slate-500">
-                      Instructor(s): {(sectionInstructors[s.id] || []).length}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setManagingSectionId(s.id)}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-                    >
-                      Manage
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const ok = confirm(
-                          `Delete ${s.name}? This removes lessons/resources tied to this block.`,
-                        );
-                        if (!ok) return;
-                        try {
-                          await api(
-                            `/courses/${activeBlockAdminCourse.id}/sections/${s.id}`,
-                            {
-                              method: "DELETE",
-                              headers,
-                            },
-                          );
-                          await refreshCore();
-                          setMessage("Block deleted.");
-                        } catch (e) {
-                          setMessage((e as Error).message);
-                        }
-                      }}
-                      className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </article>
+          <CollapsibleSection
+            title="Course Catalog"
+            description="Centralized list of catalog courses."
+            isOpen={openSections.catalog}
+            onToggle={() => toggleSection("catalog")}
+          >
+            <CourseCatalogManager courses={courses} />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Course Configuration"
+            description="Manage metadata and deletion for courses."
+            isOpen={openSections.courseConfig}
+            onToggle={() => toggleSection("courseConfig")}
+          >
+            <CourseConfigurationSection
+              courses={filteredConfigCourses}
+              selectedCourse={selectedCourse}
+              selectedCourseId={selectedCourseId}
+              courseFilter={courseConfigQuery}
+              onChangeCourseFilter={setCourseConfigQuery}
+              onSelectCourse={setSelectedCourseId}
+              onEditCourse={() => setShowEditCourseModal(true)}
+              onDeleteCourse={handleDeleteSelectedCourse}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Blocks Management"
+            description="Manage blocks in a selected course context."
+            isOpen={openSections.blocks}
+            onToggle={() => toggleSection("blocks")}
+          >
+            <SectionManager
+              courses={courses}
+              selectedCourse={selectedCourse}
+              selectedCourseId={selectedCourseId}
+              sectionInstructors={sectionInstructors}
+              studentCountBySection={studentCountBySection}
+              onSelectCourse={setSelectedCourseId}
+              onAddBlock={() => setShowAddBlockModal(true)}
+              onManageBlock={setManagingSectionId}
+              onDeleteBlock={handleDeleteBlock}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Instructor Assignment Matrix"
+            description="View instructor assignment by section."
+            isOpen={openSections.assignments}
+            onToggle={() => toggleSection("assignments")}
+          >
+            <InstructorAssignmentManager
+              selectedCourse={selectedCourse}
+              sectionInstructors={sectionInstructors}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Enrollment Snapshot"
+            description="Section-level student enrollment counts."
+            isOpen={openSections.enrollments}
+            onToggle={() => toggleSection("enrollments")}
+          >
+            <EnrollmentManager
+              selectedCourse={selectedCourse}
+              studentCountBySection={studentCountBySection}
+            />
+          </CollapsibleSection>
         </div>
       )}
 
-      {activeTab === "block_admin" && !activeBlockAdminCourse && (
-        <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-slate-900">
-            No matching courses
-          </p>
-          <p className="text-xs text-slate-500">
-            Try another keyword or clear the search field.
-          </p>
-        </article>
-      )}
+      <CreateTermModal
+        open={showCreateTermModal}
+        academicYear={newTermAcademicYear}
+        termName={newTermName}
+        onChangeAcademicYear={setNewTermAcademicYear}
+        onChangeTermName={setNewTermName}
+        onClose={() => setShowCreateTermModal(false)}
+        onSubmit={handleCreateTerm}
+      />
 
-      {activeTab === "block_admin" && selectedCourse && managingSection && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <article className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  Manage {managingSection.name}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Block instructor assignment and block details.
-                </p>
-              </div>
-              <button
-                onClick={() => setManagingSectionId(null)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              >
-                Close
-              </button>
-            </div>
+      <EditTermModal
+        open={Boolean(editingTermId)}
+        academicYear={editingTermYear}
+        termName={editingTermName}
+        onChangeAcademicYear={setEditingTermYear}
+        onChangeTermName={setEditingTermName}
+        onClose={() => setEditingTermId(null)}
+        onSubmit={handleSaveEditedTerm}
+      />
 
-            <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-2 text-sm font-semibold">Block Settings</p>
-              <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                <input
-                  value={editingSectionName}
-                  onChange={(e) => setEditingSectionName(e.target.value)}
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={async () => {
-                    try {
-                      await api(
-                        `/courses/${selectedCourse.id}/sections/${managingSection.id}`,
-                        {
-                          method: "PATCH",
-                          headers,
-                          body: JSON.stringify({ name: editingSectionName }),
-                        },
-                      );
-                      await refreshCore();
-                      setMessage("Block updated.");
-                    } catch (e) {
-                      setMessage((e as Error).message);
-                    }
-                  }}
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm text-white"
-                >
-                  Save Name
-                </button>
-              </div>
-            </div>
+      <CreateOfferingModal
+        open={showCreateOfferingModal}
+        terms={terms}
+        selectedTermId={selectedTermId}
+        title={newOfferingTitle}
+        description={newOfferingDescription}
+        instructorId={newOfferingInstructorId}
+        instructors={instructors}
+        onClose={() => setShowCreateOfferingModal(false)}
+        onChangeTermId={setSelectedTermId}
+        onChangeTitle={setNewOfferingTitle}
+        onChangeDescription={setNewOfferingDescription}
+        onChangeInstructorId={setNewOfferingInstructorId}
+        onSubmit={handleCreateOffering}
+      />
 
-            <div className="mb-3 rounded-md border border-slate-200 p-3">
-              <p className="mb-2 text-sm font-semibold">Assigned Instructors</p>
-              <div className="space-y-2">
-                {(sectionInstructors[managingSection.id] || []).map((i) => (
-                  <div
-                    key={`${managingSection.id}-${i.instructorId}`}
-                    className="flex items-center justify-between rounded-md border border-slate-200 px-2 py-1.5 text-sm"
-                  >
-                    <div>
-                      <p>{i.fullName}</p>
-                      <p className="text-xs text-slate-500">{i.email}</p>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        const ok = confirm(
-                          `Remove ${i.fullName} from ${managingSection.name}?`,
-                        );
-                        if (!ok) return;
-                        try {
-                          await api(
-                            `/courses/${selectedCourse.id}/sections/${managingSection.id}/instructors/${i.instructorId}`,
-                            { method: "DELETE", headers },
-                          );
-                          await loadSectionInstructors(
-                            managingSection.id,
-                            selectedCourse.id,
-                          );
-                          setMessage("Instructor removed from block.");
-                        } catch (e) {
-                          setMessage((e as Error).message);
-                        }
-                      }}
-                      className="rounded-md border border-rose-300 px-2 py-1 text-xs text-rose-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                {!(sectionInstructors[managingSection.id] || []).length && (
-                  <p className="text-xs text-slate-500">
-                    No instructors assigned yet.
-                  </p>
-                )}
-              </div>
-            </div>
+      <AssignOfferingInstructorModal
+        open={Boolean(assignOfferingTarget)}
+        offering={assignOfferingTarget}
+        query={assignOfferingInstructorQuery}
+        instructors={instructors}
+        onClose={() => {
+          setAssignOfferingTarget(null);
+          setAssignOfferingInstructorQuery("");
+        }}
+        onChangeQuery={setAssignOfferingInstructorQuery}
+        onSubmit={handleAssignOfferingInstructor}
+      />
 
-            <div className="rounded-md border border-slate-200 p-3">
-              <p className="mb-2 text-sm font-semibold">Assign Instructor</p>
-              <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                <div className="relative">
-                  <input
-                    value={instructorQueryBySection[managingSection.id] || ""}
-                    onChange={(e) => {
-                      setInstructorQueryBySection((p) => ({
-                        ...p,
-                        [managingSection.id]: e.target.value,
-                      }));
-                      setShowInstructorOptions(true);
-                    }}
-                    onFocus={() => setShowInstructorOptions(true)}
-                    onBlur={() =>
-                      setTimeout(() => setShowInstructorOptions(false), 120)
-                    }
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Search instructor by name or email"
-                  />
-                  {showInstructorOptions && (
-                    <div className="absolute left-0 right-0 top-11 z-20 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg">
-                      {filteredInstructorOptions.map((i) => (
-                        <button
-                          key={i.id}
-                          onClick={() => {
-                            setAssignBySection((p) => ({
-                              ...p,
-                              [managingSection.id]: i.id,
-                            }));
-                            setInstructorQueryBySection((p) => ({
-                              ...p,
-                              [managingSection.id]: `${i.fullName} (${i.email})`,
-                            }));
-                            setShowInstructorOptions(false);
-                          }}
-                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
-                        >
-                          <p className="font-medium">{i.fullName}</p>
-                          <p className="truncate text-xs text-slate-500">
-                            {i.email}
-                          </p>
-                        </button>
-                      ))}
-                      {!filteredInstructorOptions.length && (
-                        <p className="px-3 py-2 text-xs text-slate-500">
-                          No matching instructors.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={async () => {
-                    const instructorId = assignBySection[managingSection.id];
-                    if (!instructorId) return;
-                    try {
-                      await api(
-                        `/courses/${selectedCourse.id}/sections/${managingSection.id}/instructors`,
-                        {
-                          method: "POST",
-                          headers,
-                          body: JSON.stringify({ instructorId }),
-                        },
-                      );
-                      await loadSectionInstructors(
-                        managingSection.id,
-                        selectedCourse.id,
-                      );
-                      setMessage("Instructor assigned to block.");
-                    } catch (e) {
-                      setMessage((e as Error).message);
-                    }
-                  }}
-                  className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white"
-                >
-                  Assign
-                </button>
-              </div>
-              {activeAssignedInstructor && (
-                <p className="mt-2 text-xs text-slate-500">
-                  Selected: {activeAssignedInstructor.fullName} (
-                  {activeAssignedInstructor.email})
-                </p>
-              )}
-            </div>
-          </article>
-        </div>
-      )}
+      <EditCourseModal
+        open={showEditCourseModal}
+        title={editCourseTitle}
+        description={editCourseDescription}
+        onChangeTitle={setEditCourseTitle}
+        onChangeDescription={setEditCourseDescription}
+        onClose={() => setShowEditCourseModal(false)}
+        onSubmit={handleSaveCourseChanges}
+      />
 
-      {activeTab === "block_admin" && showEditCourseModal && selectedCourse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <article className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Edit Course</h3>
-              <button
-                onClick={() => setShowEditCourseModal(false)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-              >
-                Close
-              </button>
-            </div>
-            <div className="grid gap-2">
-              <input
-                value={editCourseTitle}
-                onChange={(e) => setEditCourseTitle(e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Course title"
-              />
-              <textarea
-                value={editCourseDescription}
-                onChange={(e) => setEditCourseDescription(e.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Course description"
-              />
-              <button
-                onClick={async () => {
-                  try {
-                    await api(`/courses/${selectedCourse.id}`, {
-                      method: "PUT",
-                      headers,
-                      body: JSON.stringify({
-                        title: editCourseTitle,
-                        description: editCourseDescription,
-                      }),
-                    });
-                    await refreshCore();
-                    setShowEditCourseModal(false);
-                    setMessage("Course updated.");
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  }
-                }}
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-              >
-                Update Course
-              </button>
-            </div>
-          </article>
-        </div>
-      )}
+      <AddBlockModal
+        open={showAddBlockModal}
+        selectedCourse={selectedCourse}
+        blockName={newBlockName}
+        onChangeBlockName={setNewBlockName}
+        onClose={() => setShowAddBlockModal(false)}
+        onSubmit={handleAddBlock}
+      />
+
+      <ManageBlockModal
+        open={Boolean(selectedCourse && managingSection)}
+        course={selectedCourse}
+        sectionId={managingSection?.id || null}
+        sectionName={managingSection?.name || ""}
+        editingSectionName={editingSectionName}
+        onChangeEditingSectionName={setEditingSectionName}
+        assignedInstructors={
+          managingSection ? sectionInstructors[managingSection.id] || [] : []
+        }
+        instructorQuery={manageBlockInstructorQuery}
+        instructorOptions={instructors}
+        onChangeInstructorQuery={setManageBlockInstructorQuery}
+        onClose={() => setManagingSectionId(null)}
+        onSaveName={handleSaveBlockName}
+        onRemoveInstructor={handleRemoveBlockInstructor}
+        onAssignInstructor={handleAssignInstructorToBlock}
+      />
     </section>
   );
 }

@@ -53,10 +53,8 @@ export function useCourseAnnouncements({
       }
     };
     loadAnnouncements();
-    const timer = window.setInterval(loadAnnouncements, 15000);
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
   }, [enabled, selectedCourseId]);
 

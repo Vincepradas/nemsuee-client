@@ -34,7 +34,6 @@ export function CoursesHub(props: {
     | "quizzes"
     | "assignments"
     | "activities"
-    | "scores"
     | null;
 }) {
   const {
@@ -88,7 +87,7 @@ export function CoursesHub(props: {
     Record<number, number>
   >({});
   const [activeCourseTab, setActiveCourseTab] = useState<
-    "content" | "quizzes" | "assignments" | "activities" | "scores"
+    "content" | "quizzes" | "assignments" | "activities"
   >("content");
 
   useEffect(() => {
@@ -468,18 +467,6 @@ export function CoursesHub(props: {
     if (!selectedCourse) return;
     loadRoster(selectedCourse.id);
     if (user.role === "INSTRUCTOR") loadPending(selectedCourse.id);
-  }, [selectedCourse?.id, user.role]);
-
-  useEffect(() => {
-    if (!selectedCourse) return;
-    const timer = window.setInterval(() => {
-      refreshCore().catch(() => null);
-      loadRoster(selectedCourse.id).catch(() => null);
-      if (user.role === "INSTRUCTOR") {
-        loadPending(selectedCourse.id).catch(() => null);
-      }
-    }, 10000);
-    return () => window.clearInterval(timer);
   }, [selectedCourse?.id, user.role]);
 
   return (

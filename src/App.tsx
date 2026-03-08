@@ -14,14 +14,11 @@ import logo from "./assets/logo.png";
 import { AdminBlocksHub } from "./features/admin/components/AdminBlocksHub";
 import { AuthScreen } from "./features/auth/components/AuthScreen";
 import { CoursesHub } from "./features/courses/pages/CoursesHub";
-import {
-  DashboardInfo,
-  Metric,
-  Profile,
-  Sidebar,
-} from "./app/layout/Ui";
-import { Scores } from "./features/scores/components/Scores";
+import { Profile, Sidebar } from "./app/layout/Ui";
+import { ScoresHub } from "./features/scores/pages/ScoresHub";
 import { Storage } from "./features/storage/components/Storage";
+import { GradeComputationHub } from "./features/grade-computation/pages/GradeComputationHub";
+import { RoleDashboard } from "./features/dashboard/pages/RoleDashboard";
 
 export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
@@ -43,8 +40,9 @@ export default function App() {
     () => window.innerWidth >= 1024,
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [currentTermLabel, setCurrentTermLabel] = useState("Term: --");
   const [forcedCourseTab, setForcedCourseTab] = useState<
-    "content" | "quizzes" | "assignments" | "activities" | "scores" | null
+    "content" | "quizzes" | "assignments" | "activities" | null
   >(null);
   const { api, headers } = useApi();
   const location = useLocation();
@@ -72,8 +70,11 @@ export default function App() {
 
   function navigateToView(nextView: ViewKey) {
     setView(nextView);
+    if (nextView !== "courses") setForcedCourseTab(null);
     if (nextView === "dashboard") navigate("/dashboard");
     if (nextView === "courses") navigate("/courses");
+    if (nextView === "scores") navigate("/scores");
+    if (nextView === "grade_computation") navigate("/grade-computation");
     if (nextView === "admin_blocks") navigate("/admin/blocks");
     if (nextView === "archives") navigate("/archives");
     if (nextView === "storage") navigate("/files");
@@ -101,6 +102,18 @@ export default function App() {
           ? api("/courses/archived", { headers })
           : Promise.resolve([]),
       ]);
+      try {
+        const activeTerm = await api("/terms/active", { headers });
+        if (activeTerm?.academicYear && activeTerm?.name) {
+          setCurrentTermLabel(
+            `${activeTerm.academicYear} - ${activeTerm.name}`,
+          );
+        } else {
+          setCurrentTermLabel("Term: --");
+        }
+      } catch {
+        setCurrentTermLabel("Term: --");
+      }
       const blocks =
         user.role === "INSTRUCTOR"
           ? await api("/courses/teaching-blocks", { headers })
@@ -176,6 +189,14 @@ export default function App() {
       setView("courses");
       return;
     }
+    if (path === "/scores") {
+      setView("scores");
+      return;
+    }
+    if (path === "/grade-computation") {
+      setView("grade_computation");
+      return;
+    }
     const courseMatch = path.match(/^\/courses\/(\d+)$/);
     if (courseMatch) {
       setView("courses");
@@ -236,6 +257,9 @@ export default function App() {
           </div>
 
           <div className="relative flex items-center gap-2">
+            <span className="hidden rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 md:inline-block">
+              {currentTermLabel}
+            </span>
             <button
               className="relative rounded p-2 text-slate-700 hover:bg-slate-100"
               aria-label="Notifications"
@@ -343,7 +367,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    setView("scores");
+                    navigateToView("scores");
                     setProfileMenuOpen(false);
                   }}
                   className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
@@ -463,36 +487,9 @@ export default function App() {
             </p>
           )}
 
-          {view === "dashboard" && user.role !== "INSTRUCTOR" && (
-            <section className="mb-4 grid gap-3 md:grid-cols-4">
-              <Metric label="Courses" value={String(courses.length)} />
-              <Metric
-                label="Sections"
-                value={String(
-                  courses.reduce((a, c) => a + c.sections.length, 0),
-                )}
-              />
-              <Metric
-                label="Lessons"
-                value={String(
-                  courses.reduce(
-                    (a, c) =>
-                      a + c.sections.reduce((b, s) => b + s.lessons.length, 0),
-                    0,
-                  ),
-                )}
-              />
-              <Metric
-                label="Average"
-                value={`${attempts.length ? Math.round(attempts.reduce((a, x) => a + (x.score / Math.max(1, x.total)) * 100, 0) / attempts.length) : 0}%`}
-              />
-            </section>
-          )}
-
           {view === "dashboard" && (
-            <DashboardInfo
+            <RoleDashboard
               user={user}
-              role={user.role}
               courses={courses}
               archivedCourses={archivedCourses}
               teachingBlocks={teachingBlocks}
@@ -532,7 +529,30 @@ export default function App() {
               forcedCourseTab={forcedCourseTab}
             />
           )}
-          {view === "scores" && <Scores attempts={attempts} />}
+          {view === "scores" && (
+            <ScoresHub
+              user={user}
+              courses={courses}
+              attempts={attempts}
+              api={api}
+              headers={headers}
+              setMessage={setMessage}
+              selectedCourseId={selectedCourseId}
+              onSelectCourse={setSelectedCourseId}
+            />
+          )}
+          {view === "grade_computation" && (
+            <GradeComputationHub
+              user={user}
+              courses={courses}
+              attempts={attempts}
+              api={api}
+              headers={headers}
+              setMessage={setMessage}
+              selectedCourseId={selectedCourseId}
+              onSelectCourse={setSelectedCourseId}
+            />
+          )}
           {view === "storage" && (
             <Storage api={api} headers={headers} setMessage={setMessage} />
           )}

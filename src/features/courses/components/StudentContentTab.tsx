@@ -1,4 +1,9 @@
 import type { Course, Lesson } from "../../../shared/types/lms";
+import {
+  matchesResourceScope,
+  stripResourceScope,
+  type ResourceScope,
+} from "../utils/resourceScope";
 
 type StudentContentTabProps = {
   selectedCourse: Course;
@@ -7,6 +12,7 @@ type StudentContentTabProps = {
   headers: any;
   refreshCore: () => Promise<void>;
   setMessage: (m: string) => void;
+  resourceScope: ResourceScope;
 };
 
 export function StudentContentTab({
@@ -16,28 +22,33 @@ export function StudentContentTab({
   headers,
   refreshCore,
   setMessage,
+  resourceScope,
 }: StudentContentTabProps) {
   return (
     <div className="space-y-4">
-      {selectedCourse.sections.map((s) => (
-        <section
-          key={s.id}
-          id={`section-${s.id}`}
-          className="rounded-md border border-slate-200 bg-white"
-        >
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                RESOURCES
-              </p>
-              <p className="text-sm font-semibold text-slate-900">{s.name}</p>
+      {selectedCourse.sections.map((s) => {
+        const scopedLessons = s.lessons.filter((lesson) =>
+          matchesResourceScope(lesson.title || "", resourceScope),
+        );
+        return (
+          <section
+            key={s.id}
+            id={`section-${s.id}`}
+            className="rounded-md border border-slate-200 bg-white"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  RESOURCES
+                </p>
+                <p className="text-sm font-semibold text-slate-900">{s.name}</p>
+              </div>
+              <span className="text-xs text-slate-500">
+                {scopedLessons.length} activities
+              </span>
             </div>
-            <span className="text-xs text-slate-500">
-              {s.lessons.length} activities
-            </span>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {s.lessons.map((l) => {
+            <div className="divide-y divide-slate-100">
+              {scopedLessons.map((l) => {
               const group = groupForLesson(l);
               return (
                 <article
@@ -46,7 +57,7 @@ export function StudentContentTab({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900">
-                      {l.title}
+                      {stripResourceScope(l.title || "")}
                     </p>
                     {l.content &&
                       l.content.trim().toLowerCase() !==
@@ -100,14 +111,15 @@ export function StudentContentTab({
                 </article>
               );
             })}
-            {!s.lessons.length && (
-              <p className="px-4 py-3 text-sm text-slate-500">
-                No activities yet.
-              </p>
-            )}
-          </div>
-        </section>
-      ))}
+              {!scopedLessons.length && (
+                <p className="px-4 py-3 text-sm text-slate-500">
+                  No activities yet in this semester/term.
+                </p>
+              )}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

@@ -20,10 +20,13 @@ import {
 import {
   InstructorContentTab,
   QuizzesTab,
-  ScoresTab,
   StudentContentTab,
   TasksTab,
 } from "./selected-course/TabPanels";
+import {
+  withResourceScope,
+  type ResourceScope,
+} from "../utils/resourceScope";
 
 type Props = {
   selectedCourse: Course | null;
@@ -31,9 +34,9 @@ type Props = {
   studentViewMode: "all" | "my" | "search";
   roster: Record<number, any[]>;
   loadRoster: (courseId: number) => Promise<void>;
-  activeCourseTab: "content" | "quizzes" | "assignments" | "activities" | "scores";
+  activeCourseTab: "content" | "quizzes" | "assignments" | "activities";
   setActiveCourseTab: (
-    tab: "content" | "quizzes" | "assignments" | "activities" | "scores",
+    tab: "content" | "quizzes" | "assignments" | "activities",
   ) => void;
   regenerateEnrollmentKey: (courseId: number) => Promise<void>;
   showAddSection: Record<number, boolean>;
@@ -145,6 +148,10 @@ export function SelectedCoursePanel(props: Props) {
   const [confirmRemoveAllOpen, setConfirmRemoveAllOpen] = useState(false);
   const [showDangerTools, setShowDangerTools] = useState(false);
   const [showEnrollmentManager, setShowEnrollmentManager] = useState(false);
+  const [activeTermScope, setActiveTermScope] = useState<{
+    semester: string;
+    academicYear: string;
+  }>({ semester: "1ST", academicYear: "Legacy" });
   const {
     selectedCourse,
     user,
@@ -231,6 +238,10 @@ export function SelectedCoursePanel(props: Props) {
     selectedCourse.sections.find(
       (section) => section.id === lessonComposerSectionId,
     ) || null;
+  const resourceScope: ResourceScope = {
+    semester: activeTermScope.semester,
+    term: activeTermScope.academicYear,
+  };
 
   function toUserMessage(error: unknown) {
     const msg = (error as Error)?.message || "Request failed";
@@ -290,7 +301,7 @@ export function SelectedCoursePanel(props: Props) {
       }
 
       await addLesson(selectedCourse!.id, composerSection.id, {
-        title: current.title,
+        title: withResourceScope(current.title, resourceScope),
         content: current.content,
         fileUrl: driveLink,
       });
@@ -323,6 +334,27 @@ export function SelectedCoursePanel(props: Props) {
     setRosterQuery("");
     setRosterPage(1);
   }, [selectedCourse.id, selectedCourse.title, selectedCourse.description]);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const term = await api("/terms/active", { headers });
+        if (!isMounted) return;
+        if (term?.name && term?.academicYear) {
+          setActiveTermScope({
+            semester: String(term.name),
+            academicYear: String(term.academicYear),
+          });
+        }
+      } catch {
+        // Keep fallback labels.
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [api, headers]);
 
   return (
     <article className="rounded-md border border-slate-200 p-3">
@@ -374,6 +406,7 @@ export function SelectedCoursePanel(props: Props) {
           lessonMenuOpenId={lessonMenuOpenId}
           setLessonMenuOpenId={setLessonMenuOpenId}
           deleteLesson={deleteLesson}
+          resourceScope={resourceScope}
         />
       )}
 
@@ -385,6 +418,7 @@ export function SelectedCoursePanel(props: Props) {
           headers={headers}
           refreshCore={refreshCore}
           setMessage={setMessage}
+          resourceScope={resourceScope}
         />
       )}
 
@@ -399,20 +433,9 @@ export function SelectedCoursePanel(props: Props) {
           setMessage={setMessage}
           updateQuiz={updateQuiz}
           deleteQuiz={deleteQuiz}
-          setActiveCourseTab={setActiveCourseTab}
         />
       )}
 
-      {activeCourseTab === "scores" && (
-        <ScoresTab
-          selectedCourse={selectedCourse}
-          attempts={attempts}
-          user={user}
-          api={api}
-          headers={headers}
-          setMessage={setMessage}
-        />
-      )}
       {activeCourseTab === "assignments" && (
         <TasksTab
           kind="ASSIGNMENT"

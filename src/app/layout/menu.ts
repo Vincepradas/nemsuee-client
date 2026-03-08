@@ -13,7 +13,8 @@ export function menu(role: Role): { key: ViewKey; label: string }[] {
   if (role === "ADMIN") {
     return [
       { key: "dashboard", label: "Dashboard" },
-      { key: "admin_blocks", label: "Block Admin" },
+      { key: "admin_blocks", label: "Academic Management" },
+      { key: "grade_computation", label: "Grade Review" },
       { key: "storage", label: "Files" },
     ];
   }
@@ -21,9 +22,9 @@ export function menu(role: Role): { key: ViewKey; label: string }[] {
   return [
     { key: "dashboard", label: "Dashboard" },
     { key: "courses", label: "My Blocks" },
-    { key: "scores", label: "Gradebook" },
+    { key: "scores", label: "Quiz Scores" },
+    { key: "grade_computation", label: "Grades Section" },
     { key: "storage", label: "Files" },
     { key: "archives", label: "Archives" },
   ];
 }
-

@@ -44,8 +44,6 @@ export function useNotifications({
   useEffect(() => {
     if (!enabled) return;
     loadNotifications();
-    const timer = window.setInterval(loadNotifications, 15000);
-    return () => window.clearInterval(timer);
   }, [enabled]);
 
   return {
@@ -57,4 +55,3 @@ export function useNotifications({
     markAsRead,
   };
 }
-

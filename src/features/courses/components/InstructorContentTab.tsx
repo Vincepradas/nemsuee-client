@@ -1,4 +1,9 @@
 import type { Course, Lesson } from "../../../shared/types/lms";
+import {
+  matchesResourceScope,
+  stripResourceScope,
+  type ResourceScope,
+} from "../utils/resourceScope";
 
 type InstructorContentTabProps = {
   selectedCourse: Course;
@@ -24,6 +29,7 @@ type InstructorContentTabProps = {
     sectionId: number,
     lessonId: number,
   ) => Promise<void>;
+  resourceScope: ResourceScope;
 };
 
 export function InstructorContentTab(props: InstructorContentTabProps) {
@@ -37,6 +43,7 @@ export function InstructorContentTab(props: InstructorContentTabProps) {
     lessonMenuOpenId,
     setLessonMenuOpenId,
     deleteLesson,
+    resourceScope,
   } = props;
 
   return (
@@ -86,7 +93,9 @@ export function InstructorContentTab(props: InstructorContentTabProps) {
                 ] as const
               ).map((group) => {
                 const items = s.lessons.filter(
-                  (l) => groupForLesson(l) === group,
+                  (l) =>
+                    groupForLesson(l) === group &&
+                    matchesResourceScope(l.title || "", resourceScope),
                 );
                 if (!items.length) return null;
                 return (
@@ -104,7 +113,8 @@ export function InstructorContentTab(props: InstructorContentTabProps) {
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-slate-900">
-                              {l.quiz ? "?" : l.fileUrl ? "F" : "L"} {l.title}
+                              {l.quiz ? "?" : l.fileUrl ? "F" : "L"}{" "}
+                              {stripResourceScope(l.title || "")}
                             </p>
                             {l.content &&
                               l.content.trim().toLowerCase() !==
@@ -154,7 +164,7 @@ export function InstructorContentTab(props: InstructorContentTabProps) {
                                       lesson: l,
                                     });
                                     setEditLessonInput({
-                                      title: l.title || "",
+                                      title: stripResourceScope(l.title || ""),
                                       content: l.content || "",
                                       fileUrl: l.fileUrl || "",
                                     });

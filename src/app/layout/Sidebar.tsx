@@ -46,6 +46,7 @@ export function Sidebar({
               <button
                 key={m.key}
                 onClick={() => setView(m.key)}
+                data-keep-action-text={m.key === "course_search" ? "true" : undefined}
                 className={`w-full rounded px-3 py-2 text-left text-sm ${view === m.key ? "bg-blue-700 text-white" : "bg-white hover:bg-slate-100"}`}
               >
                 {m.label}

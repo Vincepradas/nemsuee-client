@@ -93,6 +93,12 @@ export function useActionIconizer() {
         );
         if (!onlyTextNodes) return;
         if (button.dataset.keepActionText === "true") return;
+        if (
+          button.type === "submit" &&
+          button.closest('form[data-auth-form="true"]')
+        ) {
+          return;
+        }
         const label = button.textContent?.replace(/\s+/g, " ").trim() || "";
         if (!label) return;
         const iconKind = iconForAction(label);

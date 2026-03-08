@@ -156,7 +156,7 @@ export function DashboardInfo({
           </div>
           <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">
-              Handled Students
+              Students Under Me
             </p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">
               {uniqueStudents.size}
