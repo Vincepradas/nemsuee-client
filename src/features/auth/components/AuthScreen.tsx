@@ -29,6 +29,7 @@ export function AuthScreen({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [studentId, setStudentId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showTestAccounts, setShowTestAccounts] = useState(false);
 
   const passwordChecks = useMemo(
     () => ({
@@ -222,9 +223,31 @@ export function AuthScreen({
               </button>
             </div>
 
-            <h2 className={`mb-1 text-2xl font-bold ${shellText}`}>
-              {mode === "login" ? "Sign In" : "Create Account"}
-            </h2>
+            <div className="mb-1 flex items-center gap-2">
+              <h2 className={`text-2xl font-bold ${shellText}`}>
+                {mode === "login" ? "Sign In" : "Create Account"}
+              </h2>
+              {mode === "login" && (
+                <button
+                  type="button"
+                  aria-label="View test accounts"
+                  title="View test accounts"
+                  onClick={() => setShowTestAccounts(true)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide transition ${
+                    isDark
+                      ? "border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700"
+                      : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-0.5">
+                    <span className="h-1 w-1 rounded-full bg-current" />
+                    <span className="h-1 w-1 rounded-full bg-current" />
+                    <span className="h-1 w-1 rounded-full bg-current" />
+                  </span>
+                  TEST ACCOUNTS
+                </button>
+              )}
+            </div>
             <p className={`mb-6 text-sm ${subText}`}>
               {mode === "login"
                 ? "Use your university credentials to access your portal."
@@ -375,6 +398,41 @@ export function AuthScreen({
                 Privacy Policy
               </button>
             </div>
+            {showTestAccounts && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+                <div
+                  className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+                    isDark
+                      ? "border-slate-700 bg-slate-900 text-slate-100"
+                      : "border-slate-200 bg-white text-slate-900"
+                  }`}
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold">
+                      Test Accounts
+                    </p>
+                    <button
+                      type="button"
+                      className={`rounded border px-2 py-1 text-xs ${
+                        isDark
+                          ? "border-slate-600 text-slate-200 hover:bg-slate-800"
+                          : "border-slate-300 text-slate-700 hover:bg-slate-100"
+                      }`}
+                      onClick={() => setShowTestAccounts(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <p><span className="font-semibold">Instructor:</span> 23-1-00761@vsu.edu.ph</p>
+                    <p><span className="font-semibold">Student:</span> jipre@nemsu.edu</p>
+                    <p className={`${isDark ? "text-slate-400" : "text-slate-500"} pt-1`}>
+                      Password for all test accounts: <span className="font-semibold">Password@123</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </section>

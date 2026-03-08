@@ -10,8 +10,12 @@ type DashboardProps = {
   lastSync: Date | null;
   onNavigate: (view: ViewKey) => void;
   onRefresh: () => void;
+  hideLmsSisFeatures: boolean;
 };
 
 export function InstructorDashboard(props: DashboardProps) {
-  return <DashboardInfo {...props} role={props.user.role} />;
+  return <DashboardInfo {...props} role={props.user.role} hideLmsSisFeatures={props.hideLmsSisFeatures} />;
 }
+
+
+

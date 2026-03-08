@@ -41,6 +41,22 @@ export function useNotifications({
     );
   }
 
+  async function markAllAsRead() {
+    await api("/notifications/read-all", {
+      method: "PATCH",
+      headers,
+    }).catch(() => null);
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: 1 })));
+  }
+
+  async function clearNotifications() {
+    await api("/notifications/clear", {
+      method: "DELETE",
+      headers,
+    }).catch(() => null);
+    setNotifications([]);
+  }
+
   useEffect(() => {
     if (!enabled) return;
     loadNotifications();
@@ -53,5 +69,7 @@ export function useNotifications({
     setNotifications,
     loadNotifications,
     markAsRead,
+    markAllAsRead,
+    clearNotifications,
   };
 }

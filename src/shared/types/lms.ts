@@ -1,4 +1,9 @@
-export type Role = "STUDENT" | "INSTRUCTOR" | "ADMIN";
+export type Role =
+  | "STUDENT"
+  | "INSTRUCTOR"
+  | "ADMIN"
+  | "REGISTRAR"
+  | "DEAN";
 export type ViewKey =
   | "dashboard"
   | "courses"
@@ -8,7 +13,8 @@ export type ViewKey =
   | "scores"
   | "grade_computation"
   | "storage"
-  | "profile";
+  | "profile"
+  | "settings";
 export type EnrollmentStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export type User = {
@@ -119,7 +125,10 @@ export type DriveFile = {
   id?: string | null;
   name?: string | null;
   webViewLink?: string | null;
+  webContentLink?: string | null;
   mimeType?: string | null;
+  modifiedTime?: string | null;
+  size?: string | null;
 };
 
 export type TeachingBlock = {

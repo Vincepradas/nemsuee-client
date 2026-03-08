@@ -16,6 +16,7 @@ export function DashboardInfo({
   teachingBlocks = [],
   attempts,
   lastSync,
+  hideLmsSisFeatures = false,
   onNavigate,
   onRefresh,
 }: {
@@ -26,6 +27,7 @@ export function DashboardInfo({
   teachingBlocks?: TeachingBlock[];
   attempts: Attempt[];
   lastSync: Date | null;
+  hideLmsSisFeatures?: boolean;
   onNavigate: (view: ViewKey) => void;
   onRefresh: () => void;
 }) {
@@ -53,6 +55,8 @@ export function DashboardInfo({
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const isAdminLike = role === "ADMIN" || role === "REGISTRAR";
+  const isDean = role === "DEAN";
 
   if (role === "INSTRUCTOR") {
     const submissionsToGrade = attempts.length;
@@ -216,12 +220,14 @@ export function DashboardInfo({
               <p className="font-semibold text-slate-900">
                 Recent Student Activity
               </p>
-              <button
-                onClick={() => onNavigate("scores")}
-                className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
-              >
-                Open Gradebook
-              </button>
+              {!hideLmsSisFeatures && (
+                <button
+                  onClick={() => onNavigate("scores")}
+                  className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
+                >
+                  Open Gradebook
+                </button>
+              )}
             </div>
             <input
               value={activityQuery}
@@ -247,12 +253,14 @@ export function DashboardInfo({
                       <p className="text-[11px] text-slate-500">
                         Score: {attempt.score}/{attempt.total}
                       </p>
-                      <button
-                        onClick={() => onNavigate("scores")}
-                        className="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50"
-                      >
-                        Review
-                      </button>
+                      {!hideLmsSisFeatures && (
+                        <button
+                          onClick={() => onNavigate("scores")}
+                          className="rounded border border-slate-300 px-2 py-1 text-[11px] hover:bg-slate-50"
+                        >
+                          Review
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -333,8 +341,10 @@ export function DashboardInfo({
       <article className="rounded-md border border-slate-200 bg-slate-50 p-4">
         <p className="text-lg font-semibold">Welcome back, {user.fullName}</p>
         <p className="text-slate-600">
-          {role === "ADMIN" &&
+          {isAdminLike &&
             "Manage subjects, blocks, and instructor assignments."}
+          {isDean &&
+            "Review faculty performance and approve grade submissions."}
           {role === "STUDENT" &&
             "Track your courses, lesson content, quizzes, and scores."}
         </p>
@@ -346,22 +356,36 @@ export function DashboardInfo({
       <article className="rounded-md border border-slate-200 bg-slate-50 p-4">
         <p className="mb-2 font-semibold">Quick Actions</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {role === "ADMIN" ? (
+          {isAdminLike ? (
             <button
               onClick={() => onNavigate("admin_blocks")}
               className="rounded bg-blue-700 px-3 py-2 text-white"
             >
               Open Block Admin
             </button>
-          ) : (
+          ) : isDean && !hideLmsSisFeatures ? (
             <button
-              onClick={() => onNavigate("course_search")}
+              onClick={() => onNavigate("grade_computation")}
               className="rounded bg-blue-700 px-3 py-2 text-white"
             >
-              Search Courses
+              Review Grades
+            </button>
+          ) : isDean ? (
+            <button
+              onClick={() => onNavigate("storage")}
+              className="rounded bg-blue-700 px-3 py-2 text-white"
+            >
+              Open Files
+            </button>
+          ) : (
+            <button
+              onClick={() => onNavigate("courses")}
+              className="rounded bg-blue-700 px-3 py-2 text-white"
+            >
+              My Courses
             </button>
           )}
-          {role !== "ADMIN" && (
+          {!isAdminLike && !isDean && !hideLmsSisFeatures && (
             <button
               onClick={() => onNavigate("scores")}
               className="rounded border border-slate-300 bg-white px-3 py-2"
@@ -393,10 +417,12 @@ export function DashboardInfo({
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <article className="rounded-md border border-slate-200 bg-white p-4">
           <p className="mb-2 font-semibold">
-            {role === "ADMIN" ? "Administration Snapshot" : "Course Snapshot"}
+            {isAdminLike || isDean
+              ? "Administration Snapshot"
+              : "Course Snapshot"}
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
-            {role === "ADMIN" ? (
+            {isAdminLike || isDean ? (
               <>
                 <p className="rounded bg-slate-50 p-2">
                   Total Courses: {courses.length}
@@ -444,16 +470,26 @@ export function DashboardInfo({
 
         <article className="rounded-md border border-slate-200 bg-white p-4">
           <p className="mb-2 font-semibold">
-            {role === "ADMIN" ? "Admin Shortcuts" : "Recent Quiz Attempts"}
+            {isAdminLike || isDean ? "Admin Shortcuts" : "Recent Quiz Attempts"}
           </p>
-          {role === "ADMIN" ? (
+          {isAdminLike || isDean ? (
             <div className="space-y-2">
-              <button
-                onClick={() => onNavigate("admin_blocks")}
-                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-left"
-              >
-                Manage Courses and Blocks
-              </button>
+              {isAdminLike && (
+                <button
+                  onClick={() => onNavigate("admin_blocks")}
+                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-left"
+                >
+                  Manage Courses and Blocks
+                </button>
+              )}
+              {isDean && !hideLmsSisFeatures && (
+                <button
+                  onClick={() => onNavigate("grade_computation")}
+                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-left"
+                >
+                  Review Grade Submissions
+                </button>
+              )}
               <button
                 onClick={() => onNavigate("storage")}
                 className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-left"
@@ -486,4 +522,3 @@ export function DashboardInfo({
     </section>
   );
 }
-

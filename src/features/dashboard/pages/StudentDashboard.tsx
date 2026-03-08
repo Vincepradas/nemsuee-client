@@ -10,6 +10,7 @@ type DashboardProps = {
   lastSync: Date | null;
   onNavigate: (view: ViewKey) => void;
   onRefresh: () => void;
+  hideLmsSisFeatures: boolean;
 };
 
 export function StudentDashboard(props: DashboardProps) {
@@ -36,7 +37,10 @@ export function StudentDashboard(props: DashboardProps) {
           <p className="mt-1 text-2xl font-semibold text-slate-900">{completion}%</p>
         </div>
       </article>
-      <DashboardInfo {...props} role={props.user.role} />
+      <DashboardInfo {...props} role={props.user.role} hideLmsSisFeatures={props.hideLmsSisFeatures} />
     </section>
   );
 }
+
+
+

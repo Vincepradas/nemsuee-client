@@ -9,6 +9,7 @@ export function AdminSettingsPanel(props: {
   const [jsonValue, setJsonValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [activePeriod, setActivePeriod] = useState<"1" | "2">("1");
+  const [hideLmsSisFeatures, setHideLmsSisFeatures] = useState(false);
 
   function extractSettings(payload: any) {
     if (payload && typeof payload === "object" && payload.settings && typeof payload.settings === "object") {
@@ -27,6 +28,7 @@ export function AdminSettingsPanel(props: {
       setJsonValue(JSON.stringify(data || { settings: {} }, null, 2));
       const settings = extractSettings(data);
       setActivePeriod(String(settings.active_period || "1") === "2" ? "2" : "1");
+      setHideLmsSisFeatures(Boolean(settings.hide_lms_sis_features));
     } catch (e) {
       setMessage((e as Error).message);
     } finally {
@@ -89,6 +91,55 @@ export function AdminSettingsPanel(props: {
           </button>
           <span className="text-xs text-slate-500">
             Controls grade computation context for instructors and students.
+          </span>
+        </div>
+      </div>
+      <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-2 text-sm font-semibold text-slate-900">
+          Hide LMS and SIS Features
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setHideLmsSisFeatures((value) => !value)}
+            className={`rounded-md border px-3 py-2 text-sm font-medium ${
+              hideLmsSisFeatures
+                ? "border-rose-300 bg-rose-50 text-rose-700"
+                : "border-emerald-300 bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {hideLmsSisFeatures ? "Enabled (Hidden)" : "Disabled (Visible)"}
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                const parsed = JSON.parse(jsonValue || "{}");
+                const baseSettings = extractSettings(parsed);
+                const nextSettings = {
+                  ...baseSettings,
+                  hide_lms_sis_features: hideLmsSisFeatures,
+                };
+                await api("/admin/settings", {
+                  method: "PATCH",
+                  headers,
+                  body: JSON.stringify({ settings: nextSettings }),
+                });
+                setJsonValue(JSON.stringify({ settings: nextSettings }, null, 2));
+                setMessage(
+                  hideLmsSisFeatures
+                    ? "Hide LMS and SIS features enabled."
+                    : "Hide LMS and SIS features disabled.",
+                );
+              } catch (e) {
+                setMessage(`Failed to update feature toggle: ${(e as Error).message}`);
+              }
+            }}
+            disabled={loading}
+            className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            Apply Toggle
+          </button>
+          <span className="text-xs text-slate-500">
+            Hides Grades sections/tabs and identity UI for instructor/student.
           </span>
         </div>
       </div>

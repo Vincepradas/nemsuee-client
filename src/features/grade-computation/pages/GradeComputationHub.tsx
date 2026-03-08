@@ -1,16 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { SearchableDropdown } from "../../../shared/components/SearchableDropdown";
-import type { Attempt, Course, User } from "../../../shared/types/lms";
-import {
-  computeGradeRows,
-  type RowMeta,
-  type TaskRow,
-} from "../services/gradeEngine";
+import type { Course, User } from "../../../shared/types/lms";
 
 type Props = {
   user: User;
   courses: Course[];
-  attempts: Attempt[];
   api: any;
   headers: any;
   setMessage: (m: string) => void;
@@ -18,10 +12,14 @@ type Props = {
   onSelectCourse: (id: number) => void;
 };
 
+type RowMeta = {
+  isLocked: boolean;
+  reviewStatus: "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
+};
+
 export function GradeComputationHub({
   user,
   courses,
-  attempts,
   api,
   headers,
   setMessage,
@@ -33,9 +31,7 @@ export function GradeComputationHub({
     [courses, selectedCourseId],
   );
 
-  const [roster, setRoster] = useState<any[]>([]);
-  const [assignmentTasks, setAssignmentTasks] = useState<TaskRow[]>([]);
-  const [activityTasks, setActivityTasks] = useState<TaskRow[]>([]);
+  const [serverRows, setServerRows] = useState<any[]>([]);
   const [weights, setWeights] = useState({
     quiz: 30,
     assignment: 20,
@@ -80,9 +76,12 @@ export function GradeComputationHub({
   const [isSubmittingAll, setIsSubmittingAll] = useState(false);
   const [isSavingWeights, setIsSavingWeights] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  const canReviewGrades =
+    user.role === "ADMIN" || user.role === "DEAN" || user.role === "REGISTRAR";
+  const canApproveGrades = user.role === "ADMIN" || user.role === "DEAN";
 
   useEffect(() => {
-    if (user.role === "ADMIN") {
+    if (canReviewGrades) {
       api("/grade-computation/review/pending", { headers })
         .then((rows: any[]) => setAdminPending(rows || []))
         .catch((e: Error) => setMessage(e.message));
@@ -92,26 +91,39 @@ export function GradeComputationHub({
     if (!selectedCourse || user.role !== "INSTRUCTOR") return;
     (async () => {
       try {
-        const [r, a, ac, saved] = await Promise.all([
-          api(`/courses/${selectedCourse.id}/students`, { headers }),
-          api(`/tasks/course/${selectedCourse.id}?kind=ASSIGNMENT`, {
-            headers,
-          }),
-          api(`/tasks/course/${selectedCourse.id}?kind=ACTIVITY`, { headers }),
-          api(`/grade-computation/course/${selectedCourse.id}`, {
-            headers,
-          }).catch(() => []),
-        ]);
-        setRoster(r || []);
-        setAssignmentTasks(a || []);
-        setActivityTasks(ac || []);
+        const payload = await api(
+          `/grade-computation/course/${selectedCourse.id}/computed`,
+          { headers },
+        );
+        const rows = payload?.rows || [];
+        const context = payload?.context || null;
+        const remoteWeights = payload?.weights || null;
+        if (context?.semester && context?.term) {
+          setGradingContext({
+            semester: String(context.semester),
+            term: String(context.term),
+            gradingPeriod: String(context.gradingPeriod || "MIDTERM"),
+          });
+        }
+        if (remoteWeights) {
+          setWeights({
+            quiz: Number(remoteWeights.quiz ?? 30),
+            assignment: Number(remoteWeights.assignment ?? 20),
+            activity: Number(remoteWeights.activity ?? 20),
+            termExam: Number(remoteWeights.exam ?? 25),
+            attendance: Number(remoteWeights.attendance ?? 5),
+            midtermWeight: Number(remoteWeights.midtermWeight ?? 50),
+            finalsWeight: Number(remoteWeights.finalsWeight ?? 50),
+          });
+        }
+        setServerRows(rows);
 
         const nextManual: Record<
           string,
           { midterm?: number; finals?: number; attendance?: number }
         > = {};
         const nextMeta: Record<string, RowMeta> = {};
-        for (const s of saved || []) {
+        for (const s of rows) {
           nextManual[String(s.studentId)] = {
             midterm: Number(s.midterm || 0),
             finals: Number(s.finals || 0),
@@ -130,48 +142,7 @@ export function GradeComputationHub({
         setMessage((e as Error).message);
       }
     })();
-  }, [user.role, selectedCourse?.id]);
-
-  useEffect(() => {
-    if (user.role !== "INSTRUCTOR") return;
-    (async () => {
-      try {
-        const active = await api("/terms/context", { headers });
-        if (active?.semester && active?.academicYear) {
-          setGradingContext({
-            semester: String(active.semester),
-            term: String(active.academicYear),
-            gradingPeriod: String(active.gradingPeriod || "MIDTERM"),
-          });
-        }
-      } catch {
-        // Keep default fallback.
-      }
-    })();
-  }, [user.role, api, headers]);
-
-  useEffect(() => {
-    if (user.role !== "INSTRUCTOR" || !selectedCourse) return;
-    (async () => {
-      try {
-        const payload = await api(
-          `/grade-computation/course/${selectedCourse.id}/weights`,
-          { headers },
-        );
-        setWeights({
-          quiz: Number(payload?.weights?.quiz ?? 30),
-          assignment: Number(payload?.weights?.assignment ?? 20),
-          activity: Number(payload?.weights?.activity ?? 20),
-          termExam: Number(payload?.weights?.exam ?? 25),
-          attendance: Number(payload?.weights?.attendance ?? 5),
-          midtermWeight: Number(payload?.weights?.midtermWeight ?? 50),
-          finalsWeight: Number(payload?.weights?.finalsWeight ?? 50),
-        });
-      } catch {
-        // keep local defaults
-      }
-    })();
-  }, [user.role, selectedCourse?.id, api, headers]);
+  }, [user.role, selectedCourse?.id, api, headers, setMessage]);
 
   function setManualFieldInput(
     studentId: number,
@@ -204,16 +175,19 @@ export function GradeComputationHub({
 
   const rows = useMemo(() => {
     if (!selectedCourse) return [] as any[];
-    const built = computeGradeRows({
-      selectedCourseId: selectedCourse.id,
-      roster,
-      attempts,
-      assignmentTasks,
-      activityTasks,
-      manual,
-      metaByStudent,
-      weights,
-      gradingPeriod: gradingContext.gradingPeriod,
+    const built = (serverRows || []).map((row: any) => {
+      const key = String(row.studentId);
+      return {
+        ...row,
+        midterm: manual[key]?.midterm ?? row.midterm,
+        finals: manual[key]?.finals ?? row.finals,
+        attendance: manual[key]?.attendance ?? row.attendance,
+        finalGrade: Number(row.computedPercentage || 0),
+        meta: metaByStudent[key] || {
+          isLocked: Boolean(row.isLocked),
+          reviewStatus: String(row.reviewStatus || "DRAFT") as RowMeta["reviewStatus"],
+        },
+      };
     });
 
     const q = searchQuery.trim().toLowerCase();
@@ -236,18 +210,13 @@ export function GradeComputationHub({
     });
   }, [
     selectedCourse?.id,
-    roster,
-    attempts,
-    assignmentTasks,
-    activityTasks,
+    serverRows,
     manual,
-    weights,
     metaByStudent,
     blockFilter,
     sortMode,
     searchQuery,
     reviewFilter,
-    gradingContext.gradingPeriod,
   ]);
 
   const groupedRows = useMemo(() => {
@@ -314,6 +283,7 @@ export function GradeComputationHub({
   async function saveStudent(row: any, lock: boolean, silent = false) {
     if (!selectedCourse) return;
     try {
+      const localManual = manual[String(row.studentId)] || {};
       await api(
         `/grade-computation/course/${selectedCourse.id}/student/${row.studentId}`,
         {
@@ -321,28 +291,18 @@ export function GradeComputationHub({
           headers,
           body: JSON.stringify({
             studentId: row.studentId,
-            quizAvg: row.quizAvg,
-            assignmentAvg: row.assignmentAvg,
-            activityAvg: row.activityAvg,
-            midterm: row.midterm ?? 0,
-            finals: row.finals ?? 0,
-            attendance: row.attendance ?? 0,
-            finalGrade: row.finalGrade,
-            equivalentGrade: row.equivalentGrade,
-            result: row.result,
-            weights: {
-              quiz: weights.quiz,
-              assignment: weights.assignment,
-              activity: weights.activity,
-              exam: weights.termExam,
-              attendance: weights.attendance,
-              midtermWeight: weights.midtermWeight,
-              finalsWeight: weights.finalsWeight,
-            },
+            midterm: localManual.midterm ?? row.midterm ?? 0,
+            finals: localManual.finals ?? row.finals ?? 0,
+            attendance: localManual.attendance ?? row.attendance ?? 0,
             isLocked: lock,
           }),
         },
       );
+      const refreshed = await api(
+        `/grade-computation/course/${selectedCourse.id}/computed`,
+        { headers },
+      );
+      setServerRows(refreshed?.rows || []);
       setMetaByStudent((prev) => ({
         ...prev,
         [String(row.studentId)]: {
@@ -369,39 +329,10 @@ export function GradeComputationHub({
     if (!selectedCourse || isSubmittingAll) return;
     setIsSubmittingAll(true);
     try {
-      const [students, savedRows] = await Promise.all([
-        api(`/courses/${selectedCourse.id}/students`, { headers }),
-        api(`/grade-computation/course/${selectedCourse.id}`, {
-          headers,
-        }).catch(() => []),
-      ]);
-
-      const studentIds = new Set<number>(
-        (students || [])
-          .map((s: any) => Number(s?.student?.id || 0))
-          .filter(Boolean),
-      );
-      const savedByStudent = new Map<number, any>(
-        (savedRows || []).map((r: any) => [Number(r.studentId), r]),
-      );
-
-      for (const studentId of studentIds) {
-        const row = savedByStudent.get(studentId);
-        if (!row) {
-          setMessage(
-            `Cannot submit yet. Incomplete grades in ${selectedCourse.title}.`,
-          );
-          return;
-        }
+      for (const row of serverRows) {
         const reviewStatus = String(row.reviewStatus || "DRAFT");
         const isLocked = Boolean(row.isLocked);
-        if (
-          !(
-            reviewStatus === "PENDING" ||
-            reviewStatus === "APPROVED" ||
-            isLocked
-          )
-        ) {
+        if (!(reviewStatus === "PENDING" || reviewStatus === "APPROVED" || isLocked)) {
           setMessage(
             `Cannot submit yet. Incomplete grades in ${selectedCourse.title}.`,
           );
@@ -410,9 +341,11 @@ export function GradeComputationHub({
       }
 
       let submittedCount = 0;
-      for (const row of savedRows || []) {
+      for (const row of serverRows || []) {
         const reviewStatus = String(row.reviewStatus || "DRAFT");
+        const isLocked = Boolean(row.isLocked);
         if (reviewStatus === "PENDING" || reviewStatus === "APPROVED") continue;
+        if (!isLocked) continue;
         await api(
           `/grade-computation/course/${selectedCourse.id}/student/${row.studentId}/submit`,
           {
@@ -424,13 +357,14 @@ export function GradeComputationHub({
       }
 
       const refreshed = await api(
-        `/grade-computation/course/${selectedCourse.id}`,
+        `/grade-computation/course/${selectedCourse.id}/computed`,
         {
           headers,
         },
-      ).catch(() => []);
+      ).catch(() => ({ rows: [] }));
+      const refreshedRows = refreshed?.rows || [];
       const nextMeta: Record<string, RowMeta> = {};
-      for (const s of refreshed || []) {
+      for (const s of refreshedRows) {
         nextMeta[String(s.studentId)] = {
           isLocked: Boolean(s.isLocked),
           reviewStatus: String(
@@ -438,6 +372,7 @@ export function GradeComputationHub({
           ) as RowMeta["reviewStatus"],
         };
       }
+      setServerRows(refreshedRows);
       setMetaByStudent(nextMeta);
       setMessage(
         `Submitted ${submittedCount} grade records for ${selectedCourse.title}.`,
@@ -468,6 +403,11 @@ export function GradeComputationHub({
           },
         }),
       });
+      const refreshed = await api(
+        `/grade-computation/course/${selectedCourse.id}/computed`,
+        { headers },
+      );
+      setServerRows(refreshed?.rows || []);
       setMessage(`Saved weights for ${selectedCourse.title}.`);
     } catch (e) {
       setMessage((e as Error).message);
@@ -549,7 +489,7 @@ export function GradeComputationHub({
     }
   }
 
-  if (user.role === "ADMIN") {
+  if (canReviewGrades) {
     return (
       <section className="space-y-3">
         <h3 className="text-lg font-semibold">Grade Review Queue</h3>
@@ -600,18 +540,22 @@ export function GradeComputationHub({
                       >
                         View
                       </button>
-                      <button
-                        className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
-                        onClick={() => reviewPendingBlock(r, "APPROVE")}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
-                        onClick={() => reviewPendingBlock(r, "REJECT")}
-                      >
-                        Reject
-                      </button>
+                      {canApproveGrades && (
+                        <button
+                          className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
+                          onClick={() => reviewPendingBlock(r, "APPROVE")}
+                        >
+                          Approve
+                        </button>
+                      )}
+                      {canApproveGrades && (
+                        <button
+                          className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
+                          onClick={() => reviewPendingBlock(r, "REJECT")}
+                        >
+                          Reject
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

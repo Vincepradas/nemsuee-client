@@ -14,13 +14,20 @@ import logo from "./assets/logo.png";
 import { AdminBlocksHub } from "./features/admin/components/AdminBlocksHub";
 import { AuthScreen } from "./features/auth/components/AuthScreen";
 import { CoursesHub } from "./features/courses/pages/CoursesHub";
-import { Profile, Sidebar } from "./app/layout/Ui";
+import { Profile, SettingsPanel, Sidebar } from "./app/layout/Ui";
+import type { UserPreferences } from "./app/layout/Ui";
 import { ScoresHub } from "./features/scores/pages/ScoresHub";
 import { Storage } from "./features/storage/components/Storage";
 import { GradeComputationHub } from "./features/grade-computation/pages/GradeComputationHub";
 import { RoleDashboard } from "./features/dashboard/pages/RoleDashboard";
 
 export default function App() {
+  const defaultPreferences: UserPreferences = {
+    notificationsEnabled: true,
+    emailDigestEnabled: false,
+    compactTables: false,
+    showQuickTips: true,
+  };
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light",
   );
@@ -40,7 +47,25 @@ export default function App() {
     () => window.innerWidth >= 1024,
   );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [preferences, setPreferences] = useState<UserPreferences>(() => {
+    try {
+      const raw = localStorage.getItem("user_preferences");
+      if (!raw) return defaultPreferences;
+      const parsed = JSON.parse(raw) as Partial<UserPreferences>;
+      return {
+        notificationsEnabled:
+          parsed.notificationsEnabled ?? defaultPreferences.notificationsEnabled,
+        emailDigestEnabled:
+          parsed.emailDigestEnabled ?? defaultPreferences.emailDigestEnabled,
+        compactTables: parsed.compactTables ?? defaultPreferences.compactTables,
+        showQuickTips: parsed.showQuickTips ?? defaultPreferences.showQuickTips,
+      };
+    } catch {
+      return defaultPreferences;
+    }
+  });
   const [currentTermLabel, setCurrentTermLabel] = useState("Term: --");
+  const [hideLmsSisFeatures, setHideLmsSisFeatures] = useState(false);
   const [forcedCourseTab, setForcedCourseTab] = useState<
     "content" | "quizzes" | "assignments" | "activities" | null
   >(null);
@@ -54,7 +79,14 @@ export default function App() {
     setNotificationsOpen,
     loadNotifications,
     markAsRead,
-  } = useNotifications({ api, headers, enabled: Boolean(user) });
+    markAllAsRead,
+    clearNotifications,
+  } = useNotifications({
+    api,
+    headers,
+    enabled: Boolean(user) && preferences.notificationsEnabled,
+  });
+  const gradesHiddenForUi = hideLmsSisFeatures;
 
   useActionIconizer();
 
@@ -65,10 +97,19 @@ export default function App() {
   }, [theme, user]);
 
   useEffect(() => {
+    localStorage.setItem("user_preferences", JSON.stringify(preferences));
+  }, [preferences]);
+
+  useEffect(() => {
     selectedCourseIdRef.current = selectedCourseId;
   }, [selectedCourseId]);
 
   function navigateToView(nextView: ViewKey) {
+    if (gradesHiddenForUi && (nextView === "scores" || nextView === "grade_computation")) {
+      setView("dashboard");
+      navigate("/dashboard");
+      return;
+    }
     setView(nextView);
     if (nextView !== "courses") setForcedCourseTab(null);
     if (nextView === "dashboard") navigate("/dashboard");
@@ -78,6 +119,7 @@ export default function App() {
     if (nextView === "admin_blocks") navigate("/admin/blocks");
     if (nextView === "archives") navigate("/archives");
     if (nextView === "storage") navigate("/files");
+    if (nextView === "settings") navigate("/settings");
   }
 
   function openCourse(courseId: number) {
@@ -91,7 +133,7 @@ export default function App() {
     if (!user) return;
     setIsSyncing(true);
     try {
-      const [c, a, archived] = await Promise.all([
+      const [c, a, archived, publicSettingsPayload] = await Promise.all([
         api("/courses", { headers }),
         user.role === "INSTRUCTOR"
           ? api("/quizzes/scores/instructor", { headers })
@@ -101,7 +143,13 @@ export default function App() {
         user.role === "INSTRUCTOR"
           ? api("/courses/archived", { headers })
           : Promise.resolve([]),
+        api("/admin/settings/public", { headers }).catch(() => ({
+          settings: { hide_lms_sis_features: false },
+        })),
       ]);
+      setHideLmsSisFeatures(
+        Boolean(publicSettingsPayload?.settings?.hide_lms_sis_features),
+      );
       try {
         const activeTerm = await api("/terms/active", { headers });
         if (activeTerm?.academicYear && activeTerm?.name) {
@@ -177,6 +225,10 @@ export default function App() {
       setView("storage");
       return;
     }
+    if (path === "/settings") {
+      setView("settings");
+      return;
+    }
     if (path === "/admin/blocks") {
       setView("admin_blocks");
       return;
@@ -190,10 +242,20 @@ export default function App() {
       return;
     }
     if (path === "/scores") {
+      if (gradesHiddenForUi) {
+        setView("dashboard");
+        navigate("/dashboard");
+        return;
+      }
       setView("scores");
       return;
     }
     if (path === "/grade-computation") {
+      if (gradesHiddenForUi) {
+        setView("dashboard");
+        navigate("/dashboard");
+        return;
+      }
       setView("grade_computation");
       return;
     }
@@ -202,7 +264,7 @@ export default function App() {
       setView("courses");
       setSelectedCourseId(Number(courseMatch[1]));
     }
-  }, [location.pathname]);
+  }, [location.pathname, gradesHiddenForUi, navigate]);
 
   if (!user) {
     return (
@@ -260,74 +322,96 @@ export default function App() {
             <span className="hidden rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 md:inline-block">
               {currentTermLabel}
             </span>
-            <button
-              className="relative rounded p-2 text-slate-700 hover:bg-slate-100"
-              aria-label="Notifications"
-              onClick={() => {
-                setNotificationsOpen((v) => !v);
-                loadNotifications();
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V10a6 6 0 1 0-12 0v4.2a2 2 0 0 1-.6 1.4L4 17h5" />
-                <path d="M10 17a2 2 0 0 0 4 0" />
-              </svg>
-              {!!notifications.filter((n) => !Boolean(n.isRead)).length && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500" />
-              )}
-            </button>
-            {notificationsOpen && (
-              <div className="absolute right-12 top-12 z-50 w-80 rounded-md border border-slate-200 bg-white p-2 shadow-md">
-                <p className="px-2 pb-1 text-xs font-semibold text-slate-600">
-                  Notifications
-                </p>
-                <div className="max-h-80 space-y-1 overflow-auto">
-                  {notifications.length ? (
-                    notifications.map((notification) => (
-                      <button
-                        key={notification.id}
-                        data-keep-action-text="true"
-                        onClick={async () => {
-                          if (!Boolean(notification.isRead)) {
-                            await markAsRead(notification.id);
-                          }
-                          if (notification.courseId) {
-                            setView("courses");
-                            setSelectedCourseId(Number(notification.courseId));
-                            setForcedCourseTab("content");
-                            navigate(`/courses/${notification.courseId}`);
-                          }
-                          setNotificationsOpen(false);
-                        }}
-                        className={`w-full rounded px-2 py-2 text-left hover:bg-slate-50 ${
-                          Boolean(notification.isRead)
-                            ? "bg-white"
-                            : "bg-blue-50/40"
-                        }`}
-                      >
-                        <p className="line-clamp-2 text-xs text-slate-800">
-                          {notification.message}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          {notification.createdAt
-                            ? new Date(notification.createdAt).toLocaleString()
-                            : ""}
-                        </p>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="px-2 py-3 text-xs text-slate-500">
-                      No notifications yet.
-                    </p>
+            {preferences.notificationsEnabled && (
+              <>
+                <button
+                  className="relative rounded p-2 text-slate-700 hover:bg-slate-100"
+                  aria-label="Notifications"
+                  onClick={() => {
+                    setNotificationsOpen((v) => !v);
+                    loadNotifications();
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V10a6 6 0 1 0-12 0v4.2a2 2 0 0 1-.6 1.4L4 17h5" />
+                    <path d="M10 17a2 2 0 0 0 4 0" />
+                  </svg>
+                  {!!notifications.filter((n) => !Boolean(n.isRead)).length && (
+                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500" />
                   )}
-                </div>
-              </div>
+                </button>
+                {notificationsOpen && (
+                  <div className="absolute right-12 top-12 z-50 w-80 rounded-md border border-slate-200 bg-white p-2 shadow-md">
+                    <div className="mb-1 flex items-center justify-between px-2">
+                      <p className="text-xs font-semibold text-slate-600">
+                        Notifications
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => markAllAsRead()}
+                          className="text-[11px] font-medium text-blue-700 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-slate-400"
+                          disabled={!notifications.some((n) => !Boolean(n.isRead))}
+                        >
+                          Mark all as read
+                        </button>
+                        <button
+                          onClick={() => clearNotifications()}
+                          className="text-[11px] font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400"
+                          disabled={!notifications.length}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-80 space-y-1 overflow-auto">
+                      {notifications.length ? (
+                        notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            data-keep-action-text="true"
+                            onClick={async () => {
+                              if (!Boolean(notification.isRead)) {
+                                await markAsRead(notification.id);
+                              }
+                              if (notification.courseId) {
+                                setView("courses");
+                                setSelectedCourseId(Number(notification.courseId));
+                                setForcedCourseTab("content");
+                                navigate(`/courses/${notification.courseId}`);
+                              }
+                              setNotificationsOpen(false);
+                            }}
+                            className={`w-full rounded px-2 py-2 text-left hover:bg-slate-50 ${
+                              Boolean(notification.isRead)
+                                ? "bg-white"
+                                : "bg-blue-50/40"
+                            }`}
+                          >
+                            <p className="line-clamp-2 text-xs text-slate-800">
+                              {notification.message}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {notification.createdAt
+                                ? new Date(notification.createdAt).toLocaleString()
+                                : ""}
+                            </p>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="px-2 py-3 text-xs text-slate-500">
+                          No notifications yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <button
               className="rounded p-2 text-slate-700 hover:bg-slate-100"
@@ -349,7 +433,7 @@ export default function App() {
               <div className="absolute right-0 top-12 w-44 rounded-md border border-slate-200 bg-white p-1 shadow-md">
                 <button
                   onClick={() => {
-                    setMessage("Settings panel is not available yet.");
+                    navigateToView("settings");
                     setProfileMenuOpen(false);
                   }}
                   className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
@@ -365,15 +449,17 @@ export default function App() {
                 >
                   Profile
                 </button>
-                <button
-                  onClick={() => {
-                    navigateToView("scores");
-                    setProfileMenuOpen(false);
-                  }}
-                  className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
-                >
-                  Grades
-                </button>
+                {!gradesHiddenForUi && (
+                  <button
+                    onClick={() => {
+                      navigateToView("scores");
+                      setProfileMenuOpen(false);
+                    }}
+                    className="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100"
+                  >
+                    Grades
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     api("/auth/logout", { method: "POST", headers }).catch(
@@ -401,6 +487,7 @@ export default function App() {
               view={view}
               courses={courses}
               archivedCourses={archivedCourses}
+              hideLmsSisFeatures={hideLmsSisFeatures}
               selectedCourseId={selectedCourseId}
               onOpenCourse={(id) => {
                 openCourse(id);
@@ -444,6 +531,7 @@ export default function App() {
               view={view}
               courses={courses}
               archivedCourses={archivedCourses}
+              hideLmsSisFeatures={hideLmsSisFeatures}
               selectedCourseId={selectedCourseId}
               onOpenCourse={openCourse}
               teachingBlocks={teachingBlocks}
@@ -494,6 +582,7 @@ export default function App() {
               archivedCourses={archivedCourses}
               teachingBlocks={teachingBlocks}
               attempts={attempts}
+              hideLmsSisFeatures={hideLmsSisFeatures}
               lastSync={lastSync}
               onNavigate={navigateToView}
               onRefresh={() =>
@@ -529,7 +618,7 @@ export default function App() {
               forcedCourseTab={forcedCourseTab}
             />
           )}
-          {view === "scores" && (
+          {view === "scores" && !gradesHiddenForUi && (
             <ScoresHub
               user={user}
               courses={courses}
@@ -541,11 +630,10 @@ export default function App() {
               onSelectCourse={setSelectedCourseId}
             />
           )}
-          {view === "grade_computation" && (
+          {view === "grade_computation" && !gradesHiddenForUi && (
             <GradeComputationHub
               user={user}
               courses={courses}
-              attempts={attempts}
               api={api}
               headers={headers}
               setMessage={setMessage}
@@ -554,10 +642,23 @@ export default function App() {
             />
           )}
           {view === "storage" && (
-            <Storage api={api} headers={headers} setMessage={setMessage} />
+            <Storage
+              api={api}
+              headers={headers}
+              setMessage={setMessage}
+              userRole={user.role}
+            />
           )}
           {view === "profile" && <Profile user={user} />}
-          {view === "admin_blocks" && user.role === "ADMIN" && (
+          {view === "settings" && (
+            <SettingsPanel
+              user={user}
+              preferences={preferences}
+              onChange={setPreferences}
+            />
+          )}
+          {view === "admin_blocks" &&
+            (user.role === "ADMIN" || user.role === "REGISTRAR") && (
             <AdminBlocksHub
               api={api}
               headers={headers}

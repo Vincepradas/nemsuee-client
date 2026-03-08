@@ -5,7 +5,7 @@ import type {
 } from "../types/scoreTypes";
 
 type ScoresFilterBarProps = {
-  role: "INSTRUCTOR" | "STUDENT" | "ADMIN";
+  role: "INSTRUCTOR" | "STUDENT" | "ADMIN" | "REGISTRAR" | "DEAN";
   scoreQuery: string;
   scoreLessonFilter: string;
   scoreBlockFilter: string;

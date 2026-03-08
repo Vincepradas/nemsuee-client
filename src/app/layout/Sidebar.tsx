@@ -13,6 +13,7 @@ export function Sidebar({
   onOpenArchivedCourse,
   teachingBlocks = [],
   onOpenTeachingBlock,
+  hideLmsSisFeatures = false,
 }: {
   user: User;
   view: ViewKey;
@@ -24,9 +25,11 @@ export function Sidebar({
   onOpenCourse: (id: number) => void;
   onOpenArchivedCourse: (id: number) => void;
   onOpenTeachingBlock?: (courseId: number, sectionId: number) => void;
+  hideLmsSisFeatures?: boolean;
 }) {
   const [coursesOpen, setCoursesOpen] = useState(true);
-  const items = menu(user.role);
+  const items = menu(user.role, { hideLmsSisFeatures });
+  const hideIdentity = hideLmsSisFeatures && (user.role === "INSTRUCTOR" || user.role === "STUDENT");
 
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -35,8 +38,12 @@ export function Sidebar({
         <h1 className="text-lg font-bold">E-Learning Platform</h1>
       </div>
       <p className="mt-4 rounded-md bg-slate-100 p-3 text-sm">
-        <span className="font-semibold">{user.fullName}</span>
-        <br />
+        {!hideIdentity && (
+          <>
+            <span className="font-semibold">{user.fullName}</span>
+            <br />
+          </>
+        )}
         {user.role}
       </p>
       <nav className="mt-3 space-y-2">
